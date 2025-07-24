@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Panel de Administrador{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 text-gray-800">
+    <nav class="bg-slate-800 text-white p-4">
+      <div class="container mx-auto flex justify-between items-center">
+        <a href="{{ url_for('main.index') }}" class="text-xl font-bold"
+          >Panel de Administrador</a
+        >
+        <div>
+          <a
+            href="{{ url_for('main.manage_users') }}"
+            class="px-3 py-2 rounded-md hover:bg-slate-700"
+            >Gestionar Usuarios</a
+          >
+          <a
+            href="{{ url_for('main.reports') }}"
+            class="px-3 py-2 rounded-md hover:bg-slate-700"
+            >Reportes</a
+          >
+          <a
+            href="{{ url_for('main.audit_log') }}"
+            class="px-3 py-2 rounded-md hover:bg-slate-700"
+            >Auditoría</a
+          >
+          <span class="mx-4">|</span>
+          <span class="mr-4">Hola, {{ current_user.username }}</span>
+          <a
+            href="{{ url_for('auth.logout') }}"
+            class="bg-red-600 hover:bg-red-700 px-3 py-2 rounded-md"
+            >Cerrar Sesión</a
+          >
+        </div>
+      </div>
+    </nav>
+
+    <div class="container mx-auto p-4 md:p-8">
+      {% with messages = get_flashed_messages(with_categories=true) %} {% if
+      messages %}
+      <div class="max-w-4xl mx-auto mb-4">
+        {% for category, message in messages %}
+        <div
+          class="p-4 rounded-md {{ 'bg-green-100 text-green-800' if category == 'success' else 'bg-red-100 text-red-800' }}"
+          role="alert"
+        >
+          <p>{{ message }}</p>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %} {% endwith %} {% block content %}{% endblock %}
+    </div>
+
+    <!-- SCRIPT PARA ACTUALIZACIÓN EN TIEMPO REAL -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script type="text/javascript">
+      document.addEventListener("DOMContentLoaded", (event) => {
+        var socket = io.connect(
+          location.protocol + "//" + document.domain + ":" + location.port
+        );
+        socket.on("connect", function () {
+          console.log("Conectado al servidor en tiempo real.");
+        });
+        socket.on("update_dashboard", function (msg) {
+          console.log("Actualización recibida:", msg);
+
+          // --- CORRECCIÓN AQUÍ ---
+          // Se eliminó la condición para que la página siempre se recargue.
+          location.reload();
+        });
+      });
+    </script>
+  </body>
+</html>

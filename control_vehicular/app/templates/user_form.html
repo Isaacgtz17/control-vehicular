@@ -1,0 +1,30 @@
+{% extends "base_admin.html" %}
+
+{% block title %}{{ 'Editar' if user else 'Añadir' }} Usuario{% endblock %}
+
+{% block content %}
+<div class="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
+    <h2 class="text-2xl font-semibold mb-4">{{ 'Editar' if user else 'Añadir' }} Usuario</h2>
+    <form method="post">
+        <div class="mb-4">
+            <label for="username" class="block text-gray-700 font-semibold mb-2">Nombre de Usuario</label>
+            <input type="text" name="username" id="username" value="{{ user.username if user else '' }}" required class="p-2 border rounded w-full">
+        </div>
+        <div class="mb-4">
+            <label for="password" class="block text-gray-700 font-semibold mb-2">Contraseña (dejar en blanco para no cambiar)</label>
+            <input type="password" name="password" id="password" class="p-2 border rounded w-full" {{ 'required' if not user else '' }}>
+        </div>
+        <div class="mb-4">
+            <label for="role" class="block text-gray-700 font-semibold mb-2">Rol</label>
+            <select name="role" id="role" class="p-2 border rounded w-full">
+                <option value="vigilante" {{ "selected" if user and user.role == 'vigilante' }}>Vigilante</option>
+                <option value="admin" {{ "selected" if user and user.role == 'admin' }}>Administrador</option>
+            </select>
+        </div>
+        <div class="flex items-center space-x-4 mt-6">
+            <a href="{{ url_for('main.manage_users') }}" class="w-1/2 text-center bg-gray-300 text-gray-800 p-3 rounded-lg hover:bg-gray-400">Cancelar</a>
+            <button type="submit" class="w-1/2 bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700">Guardar</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

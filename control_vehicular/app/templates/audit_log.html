@@ -1,0 +1,45 @@
+{% extends "base_admin.html" %} {% block title %}Log de Auditoría{% endblock %}
+{% block content %}
+<div class="bg-white p-6 rounded-lg shadow-md mb-8">
+  <h2 class="text-2xl font-semibold mb-4">
+    Log de Acciones de Administradores
+  </h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-left border-collapse">
+      <thead>
+        <tr class="bg-gray-200">
+          <th class="p-2 border">Fecha y Hora</th>
+          <th class="p-2 border">Usuario</th>
+          <th class="p-2 border">Acción</th>
+          <th class="p-2 border">Detalles</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs.items %}
+        <tr class="hover:bg-gray-50">
+          <td class="p-2 border">
+            {{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+          </td>
+          <td class="p-2 border">{{ log.user.username }}</td>
+          <td class="p-2 border">{{ log.action }}</td>
+          <td class="p-2 border">{{ log.details }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <!-- Paginación para el log -->
+  <div class="mt-4">
+    {% if logs.has_prev %}<a
+      href="{{ url_for('main.audit_log', page=logs.prev_num) }}"
+      class="px-3 py-1 bg-gray-200 rounded"
+      >&laquo; Anterior</a
+    >{% endif %} Página {{ logs.page }} de {{ logs.pages }}. {% if logs.has_next
+    %}<a
+      href="{{ url_for('main.audit_log', page=logs.next_num) }}"
+      class="px-3 py-1 bg-gray-200 rounded"
+      >Siguiente &raquo;</a
+    >{% endif %}
+  </div>
+</div>
+{% endblock %}

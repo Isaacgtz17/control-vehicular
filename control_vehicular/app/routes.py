@@ -1,16 +1,20 @@
 # app/routes.py
-import base64
-import qrcode
-import uuid
-from io import BytesIO
+import base64, qrcode, uuid, csv, io
 from datetime import datetime
-from flask import Blueprint, request, jsonify, render_template, redirect, url_for, send_file, flash, abort
+from flask import (Blueprint, request, jsonify, render_template, redirect, url_for, 
+                   send_file, flash, abort, Response)
 from flask_login import login_required, current_user
 from functools import wraps
-from .models import Vehiculo, RegistroAcceso
+from .models import Vehiculo, RegistroAcceso, User, AuditLog
 from . import db, socketio
 
 main_bp = Blueprint('main', __name__)
+
+def log_action(action, details=""):
+    """Helper function to log admin actions."""
+    log = AuditLog(user_id=current_user.id, action=action, details=details)
+    db.session.add(log)
+    db.session.commit()
 
 def admin_required(f):
     @wraps(f)
@@ -23,22 +27,33 @@ def admin_required(f):
 @main_bp.route('/')
 @login_required
 def index():
+    page = request.args.get('page', 1, type=int)
     q_vehiculo = request.args.get('q_vehiculo', '')
     q_bitacora = request.args.get('q_bitacora', '')
-    if q_vehiculo:
-        vehiculos = Vehiculo.query.filter(Vehiculo.placa.contains(q_vehiculo) | Vehiculo.modelo.contains(q_vehiculo) | Vehiculo.conductor.contains(q_vehiculo)).all()
-    else:
-        vehiculos = Vehiculo.query.all()
-    if q_bitacora:
-        registros = RegistroAcceso.query.join(Vehiculo).filter(Vehiculo.placa.contains(q_bitacora) | Vehiculo.modelo.contains(q_bitacora) | Vehiculo.conductor.contains(q_bitacora)).order_by(RegistroAcceso.timestamp.desc()).all()
-    else:
-        registros = RegistroAcceso.query.order_by(RegistroAcceso.timestamp.desc()).all()
-    if current_user.role == 'admin':
-        return render_template('index.html', vehiculos=vehiculos, registros=registros, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
-    else:
-        return render_template('dashboard_vigilante.html', vehiculos=vehiculos, registros=registros, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
 
-# --- NUEVA RUTA PARA EL ESCÁNER MÓVIL ---
+    if q_vehiculo:
+        vehiculos_pagination = Vehiculo.query.filter(
+            Vehiculo.placa.contains(q_vehiculo) | 
+            Vehiculo.modelo.contains(q_vehiculo) | 
+            Vehiculo.conductor.contains(q_vehiculo)
+        ).paginate(page=page, per_page=9)
+    else:
+        vehiculos_pagination = Vehiculo.query.paginate(page=page, per_page=9)
+
+    if q_bitacora:
+        registros_pagination = RegistroAcceso.query.join(Vehiculo).filter(
+            Vehiculo.placa.contains(q_bitacora) | 
+            Vehiculo.modelo.contains(q_bitacora) | 
+            Vehiculo.conductor.contains(q_bitacora)
+        ).order_by(RegistroAcceso.timestamp.desc()).paginate(page=page, per_page=10)
+    else:
+        registros_pagination = RegistroAcceso.query.order_by(RegistroAcceso.timestamp.desc()).paginate(page=page, per_page=10)
+
+    if current_user.role == 'admin':
+        return render_template('index.html', vehiculos=vehiculos_pagination, registros=registros_pagination, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
+    else:
+        return render_template('dashboard_vigilante.html', vehiculos=vehiculos_pagination, registros=registros_pagination, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
+
 @main_bp.route('/escaner_movil')
 @login_required
 def escaner_movil():
@@ -46,6 +61,7 @@ def escaner_movil():
 
 @main_bp.route('/verificar_qr', methods=['POST'])
 def verificar_qr():
+    # ... (código sin cambios)
     data = request.json
     if not data or 'qr_id' not in data:
         return jsonify({'status': 'error', 'message': 'Datos inválidos'}), 400
@@ -68,26 +84,28 @@ def verificar_qr():
     else:
         return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'}), 404
 
-# --- Rutas de Admin (sin cambios) ---
+# --- RUTAS DE GESTIÓN DE ADMIN ---
+
 @main_bp.route('/registrar_vehiculo', methods=['POST'])
 @login_required
 @admin_required
 def registrar_vehiculo():
     placa = request.form['placa']
     if Vehiculo.query.filter_by(placa=placa).first():
-        flash(f'La placa "{placa}" ya existe en la base de datos.', 'error')
+        flash(f'La placa "{placa}" ya existe.', 'error')
         return redirect(url_for('main.index'))
     modelo = request.form['modelo']
     conductor = request.form['conductor']
     qr_id_nuevo = str(uuid.uuid4())
     qr_img = qrcode.make(qr_id_nuevo)
-    buffered = BytesIO()
+    buffered = io.BytesIO()
     qr_img.save(buffered, format="PNG")
     qr_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
     nuevo_vehiculo = Vehiculo(qr_id=qr_id_nuevo, placa=placa, modelo=modelo, conductor=conductor, qr_code_b64=qr_b64)
     db.session.add(nuevo_vehiculo)
     db.session.commit()
-    flash(f'Vehículo con placa "{placa}" registrado con éxito.', 'success')
+    log_action("Crear Vehículo", f"Placa: {placa}")
+    flash(f'Vehículo {placa} registrado.', 'success')
     return redirect(url_for('main.index'))
 
 @main_bp.route('/vehiculo/editar/<int:vehiculo_id>', methods=['GET', 'POST'])
@@ -100,9 +118,10 @@ def editar_vehiculo(vehiculo_id):
         vehiculo.modelo = request.form['modelo']
         vehiculo.conductor = request.form['conductor']
         db.session.commit()
-        flash(f'Vehículo con placa "{vehiculo.placa}" actualizado correctamente.', 'success')
+        log_action("Editar Vehículo", f"Placa: {vehiculo.placa}")
+        flash(f'Vehículo {vehiculo.placa} actualizado.', 'success')
         return redirect(url_for('main.index'))
-    return render_template('editar_vehiculo.html', vehiculo=vehiculo)
+    return render_template('edit_vehiculo.html', vehiculo=vehiculo) # Necesitarás crear este template
 
 @main_bp.route('/vehiculo/eliminar/<int:vehiculo_id>', methods=['POST'])
 @login_required
@@ -112,16 +131,130 @@ def eliminar_vehiculo(vehiculo_id):
     placa_eliminada = vehiculo.placa
     db.session.delete(vehiculo)
     db.session.commit()
-    flash(f'Vehículo con placa "{placa_eliminada}" ha sido eliminado.', 'success')
+    log_action("Eliminar Vehículo", f"Placa: {placa_eliminada}")
+    flash(f'Vehículo {placa_eliminada} ha sido eliminado.', 'success')
     return redirect(url_for('main.index'))
 
 @main_bp.route('/vehiculo/descargar_qr/<int:vehiculo_id>')
 @login_required
 @admin_required
 def descargar_qr(vehiculo_id):
+    # ... (código sin cambios)
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     qr_img = qrcode.make(vehiculo.qr_id)
-    buffered = BytesIO()
+    buffered = io.BytesIO()
     qr_img.save(buffered, format="PNG")
     buffered.seek(0)
     return send_file(buffered,download_name=f"qr_{vehiculo.placa}.png",mimetype='image/png',as_attachment=True)
+
+# --- RUTAS PARA GESTIÓN DE USUARIOS ---
+
+@main_bp.route('/admin/users')
+@login_required
+@admin_required
+def manage_users():
+    users = User.query.all()
+    return render_template('manage_users.html', users=users)
+
+@main_bp.route('/admin/users/add', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def add_user():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role')
+        if User.query.filter_by(username=username).first():
+            flash('Ese nombre de usuario ya existe.', 'error')
+        else:
+            new_user = User(username=username, role=role)
+            new_user.set_password(password)
+            db.session.add(new_user)
+            db.session.commit()
+            log_action("Crear Usuario", f"Username: {username}, Rol: {role}")
+            flash('Usuario creado exitosamente.', 'success')
+            return redirect(url_for('main.manage_users'))
+    return render_template('user_form.html')
+
+@main_bp.route('/admin/users/edit/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def edit_user(user_id):
+    user = User.query.get_or_404(user_id)
+    if request.method == 'POST':
+        user.username = request.form.get('username')
+        user.role = request.form.get('role')
+        password = request.form.get('password')
+        if password:
+            user.set_password(password)
+        db.session.commit()
+        log_action("Editar Usuario", f"Username: {user.username}")
+        flash('Usuario actualizado.', 'success')
+        return redirect(url_for('main.manage_users'))
+    return render_template('user_form.html', user=user)
+
+@main_bp.route('/admin/users/delete/<int:user_id>', methods=['POST'])
+@login_required
+@admin_required
+def delete_user(user_id):
+    if user_id == current_user.id:
+        flash('No puedes eliminarte a ti mismo.', 'error')
+        return redirect(url_for('main.manage_users'))
+    user = User.query.get_or_404(user_id)
+    username = user.username
+    db.session.delete(user)
+    db.session.commit()
+    log_action("Eliminar Usuario", f"Username: {username}")
+    flash('Usuario eliminado.', 'success')
+    return redirect(url_for('main.manage_users'))
+
+# --- RUTAS PARA REPORTES Y AUDITORÍA ---
+
+@main_bp.route('/reports')
+@login_required
+@admin_required
+def reports():
+    return render_template('reports.html')
+
+@main_bp.route('/export_csv', methods=['POST'])
+@login_required
+@admin_required
+def export_csv():
+    start_date_str = request.form.get('start_date')
+    end_date_str = request.form.get('end_date')
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+    end_date = datetime.strptime(f"{end_date_str} 23:59:59", '%Y-%m-%d %H:%M:%S')
+
+    registros = RegistroAcceso.query.filter(
+        RegistroAcceso.timestamp >= start_date,
+        RegistroAcceso.timestamp <= end_date
+    ).order_by(RegistroAcceso.timestamp.asc()).all()
+    
+    # Generar CSV en memoria
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['ID', 'Fecha y Hora', 'Tipo', 'Placa', 'Modelo', 'Conductor'])
+    for registro in registros:
+        writer.writerow([
+            registro.id,
+            registro.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            registro.tipo,
+            registro.vehiculo.placa,
+            registro.vehiculo.modelo,
+            registro.vehiculo.conductor
+        ])
+    output.seek(0)
+    
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment;filename=reporte_accesos_{start_date_str}_a_{end_date_str}.csv"}
+    )
+
+@main_bp.route('/audit_log')
+@login_required
+@admin_required
+def audit_log():
+    page = request.args.get('page', 1, type=int)
+    logs = AuditLog.query.order_by(AuditLog.timestamp.desc()).paginate(page=page, per_page=20)
+    return render_template('audit_log.html', logs=logs)

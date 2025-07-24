@@ -1,6 +1,4 @@
 # app/models.py
-# Definición de los modelos de la base de datos (tablas).
-
 import uuid
 from datetime import datetime
 from . import db
@@ -30,10 +28,7 @@ class Vehiculo(db.Model):
     conductor = db.Column(db.String(100), nullable=False)
     fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
     qr_code_b64 = db.Column(db.Text, nullable=False)
-    
-    # --- NUEVO CAMPO DE ESTADO ---
-    status = db.Column(db.String(10), default='afuera', nullable=False) # Valores: 'adentro', 'afuera'
-
+    status = db.Column(db.String(10), default='afuera', nullable=False)
     accesos = db.relationship('RegistroAcceso', backref='vehiculo', lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -43,7 +38,19 @@ class RegistroAcceso(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     vehiculo_id = db.Column(db.Integer, db.ForeignKey('vehiculo.id'), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    tipo = db.Column(db.String(10), nullable=False) # 'Entrada' o 'Salida'
+    tipo = db.Column(db.String(10), nullable=False)
 
     def __repr__(self):
         return f'<Registro {self.id} - Vehiculo {self.vehiculo.placa}>'
+
+# --- NUEVO MODELO PARA LOG DE AUDITORÍA ---
+class AuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user = db.relationship('User', backref=db.backref('audit_logs', lazy=True))
+    action = db.Column(db.String(100), nullable=False)
+    details = db.Column(db.String(255), nullable=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<AuditLog {self.id} - {self.action}>'
