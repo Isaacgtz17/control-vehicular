@@ -3,6 +3,7 @@
 
 import base64
 import qrcode
+import uuid # <-- Asegúrate de que uuid esté importado
 from io import BytesIO
 from datetime import datetime
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for
@@ -29,14 +30,17 @@ def registrar_vehiculo():
         # Aquí podrías agregar un mensaje de error para el usuario
         return redirect(url_for('main.index'))
 
-    # Generamos la imagen del código QR
-    qr_id_nuevo = Vehiculo().qr_id # Usamos el default del modelo
+    # --- INICIO DE LA CORRECCIÓN ---
+    # 1. Generamos un ID único y explícito.
+    qr_id_nuevo = str(uuid.uuid4())
+
+    # 2. Usamos ese nuevo ID para crear la imagen del código QR.
     qr_img = qrcode.make(qr_id_nuevo)
     buffered = BytesIO()
     qr_img.save(buffered, format="PNG")
     qr_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-    # Creamos y guardamos el nuevo vehículo
+    # 3. Usamos el MISMO ID para crear el objeto Vehiculo.
     nuevo_vehiculo = Vehiculo(
         qr_id=qr_id_nuevo,
         placa=placa,
@@ -44,6 +48,8 @@ def registrar_vehiculo():
         conductor=conductor,
         qr_code_b64=qr_b64
     )
+    # --- FIN DE LA CORRECCIÓN ---
+    
     db.session.add(nuevo_vehiculo)
     db.session.commit()
     
