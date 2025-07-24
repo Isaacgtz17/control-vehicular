@@ -12,47 +12,45 @@ from . import db, socketio
 
 main_bp = Blueprint('main', __name__)
 
-# Decorador para requerir rol de Administrador
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated or current_user.role != 'admin':
-            abort(403) # Error de Acceso Prohibido
+            abort(403)
         return f(*args, **kwargs)
     return decorated_function
 
-# Ruta principal que decide qué dashboard mostrar
 @main_bp.route('/')
 @login_required
 def index():
     q_vehiculo = request.args.get('q_vehiculo', '')
     q_bitacora = request.args.get('q_bitacora', '')
-
     if q_vehiculo:
         vehiculos = Vehiculo.query.filter(Vehiculo.placa.contains(q_vehiculo) | Vehiculo.modelo.contains(q_vehiculo) | Vehiculo.conductor.contains(q_vehiculo)).all()
     else:
         vehiculos = Vehiculo.query.all()
-
     if q_bitacora:
         registros = RegistroAcceso.query.join(Vehiculo).filter(Vehiculo.placa.contains(q_bitacora) | Vehiculo.modelo.contains(q_bitacora) | Vehiculo.conductor.contains(q_bitacora)).order_by(RegistroAcceso.timestamp.desc()).all()
     else:
         registros = RegistroAcceso.query.order_by(RegistroAcceso.timestamp.desc()).all()
-
     if current_user.role == 'admin':
         return render_template('index.html', vehiculos=vehiculos, registros=registros, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
     else:
         return render_template('dashboard_vigilante.html', vehiculos=vehiculos, registros=registros, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
 
-# Ruta de la API para el escáner (no requiere login de navegador)
+# --- NUEVA RUTA PARA EL ESCÁNER MÓVIL ---
+@main_bp.route('/escaner_movil')
+@login_required
+def escaner_movil():
+    return render_template('escaner_movil.html')
+
 @main_bp.route('/verificar_qr', methods=['POST'])
 def verificar_qr():
     data = request.json
     if not data or 'qr_id' not in data:
         return jsonify({'status': 'error', 'message': 'Datos inválidos'}), 400
-
     qr_id_recibido = data['qr_id']
     vehiculo = Vehiculo.query.filter_by(qr_id=qr_id_recibido).first()
-
     if vehiculo:
         if vehiculo.status == 'afuera':
             vehiculo.status = 'adentro'
@@ -62,27 +60,15 @@ def verificar_qr():
             vehiculo.status = 'afuera'
             tipo_acceso = 'Salida'
             mensaje_respuesta = 'SALIDA REGISTRADA'
-
         nuevo_registro = RegistroAcceso(vehiculo_id=vehiculo.id, tipo=tipo_acceso)
         db.session.add(nuevo_registro)
         db.session.commit()
-        
-        # Emite el evento a todos los clientes conectados
         socketio.emit('update_dashboard', {'message': 'Hay nuevos datos'})
-        
-        return jsonify({
-            'status': 'autorizado',
-            'message': mensaje_respuesta,
-            'placa': vehiculo.placa,
-            'modelo': vehiculo.modelo,
-            'conductor': vehiculo.conductor,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+        return jsonify({'status': 'autorizado','message': mensaje_respuesta,'placa': vehiculo.placa,'modelo': vehiculo.modelo,'conductor': vehiculo.conductor,'timestamp': datetime.utcnow().isoformat()})
     else:
         return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'}), 404
 
-# --- Rutas protegidas solo para Administradores ---
-
+# --- Rutas de Admin (sin cambios) ---
 @main_bp.route('/registrar_vehiculo', methods=['POST'])
 @login_required
 @admin_required
