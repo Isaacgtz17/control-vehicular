@@ -3,15 +3,16 @@ import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
-from flask_socketio import SocketIO # Importamos SocketIO
+from flask_socketio import SocketIO
+from datetime import datetime
+import pytz  # Importamos la nueva librería
 
 db = SQLAlchemy()
 login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
-socketio = SocketIO() # Creamos la instancia de SocketIO
+socketio = SocketIO()
 
 def create_app():
-    # allow_unsafe_werkzeug es necesario para versiones más recientes
     app = Flask(__name__, instance_relative_config=True)
 
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'vehiculos.db')
@@ -21,7 +22,19 @@ def create_app():
     
     db.init_app(app)
     login_manager.init_app(app)
-    socketio.init_app(app) # Inicializamos SocketIO con la app
+    socketio.init_app(app)
+
+    # --- FILTRO DE PLANTILLA ACTUALIZADO PARA USAR PYTZ ---
+    @app.template_filter('local_time')
+    def local_time_filter(utc_dt):
+        if utc_dt is None:
+            return ""
+        # Asume que la hora de la BD es UTC (naive) y la convierte a consciente
+        utc_dt = pytz.utc.localize(utc_dt)
+        # Convierte a la zona horaria de Mexico City (CD del Carmen)
+        local_tz = pytz.timezone("America/Mexico_City")
+        local_dt = utc_dt.astimezone(local_tz)
+        return local_dt.strftime('%Y-%m-%d %H:%M:%S')
 
     from .models import User
     @login_manager.user_loader

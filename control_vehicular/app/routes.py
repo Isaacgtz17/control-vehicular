@@ -1,6 +1,7 @@
 # app/routes.py
 import base64, qrcode, uuid, csv, io
 from datetime import datetime
+import pytz
 from flask import (Blueprint, request, jsonify, render_template, redirect, url_for, 
                    send_file, flash, abort, Response)
 from flask_login import login_required, current_user
@@ -11,7 +12,6 @@ from . import db, socketio
 main_bp = Blueprint('main', __name__)
 
 def log_action(action, details=""):
-    """Helper function to log admin actions."""
     log = AuditLog(user_id=current_user.id, action=action, details=details)
     db.session.add(log)
     db.session.commit()
@@ -27,7 +27,10 @@ def admin_required(f):
 @main_bp.route('/')
 @login_required
 def index():
-    page = request.args.get('page', 1, type=int)
+    # --- CORRECCIÓN: Parámetros de página separados ---
+    page_vehiculos = request.args.get('page_vehiculos', 1, type=int)
+    page_registros = request.args.get('page_registros', 1, type=int)
+    
     q_vehiculo = request.args.get('q_vehiculo', '')
     q_bitacora = request.args.get('q_bitacora', '')
 
@@ -36,45 +39,42 @@ def index():
             Vehiculo.placa.contains(q_vehiculo) | 
             Vehiculo.modelo.contains(q_vehiculo) | 
             Vehiculo.conductor.contains(q_vehiculo)
-        ).paginate(page=page, per_page=9)
+        ).paginate(page=page_vehiculos, per_page=9)
     else:
-        vehiculos_pagination = Vehiculo.query.paginate(page=page, per_page=9)
+        vehiculos_pagination = Vehiculo.query.paginate(page=page_vehiculos, per_page=9)
 
     if q_bitacora:
         registros_pagination = RegistroAcceso.query.join(Vehiculo).filter(
             Vehiculo.placa.contains(q_bitacora) | 
             Vehiculo.modelo.contains(q_bitacora) | 
             Vehiculo.conductor.contains(q_bitacora)
-        ).order_by(RegistroAcceso.timestamp.desc()).paginate(page=page, per_page=10)
+        ).order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
     else:
-        registros_pagination = RegistroAcceso.query.order_by(RegistroAcceso.timestamp.desc()).paginate(page=page, per_page=10)
+        registros_pagination = RegistroAcceso.query.order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
 
     if current_user.role == 'admin':
         return render_template('index.html', vehiculos=vehiculos_pagination, registros=registros_pagination, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
     else:
+        # También actualizamos la vista del vigilante
         return render_template('dashboard_vigilante.html', vehiculos=vehiculos_pagination, registros=registros_pagination, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
 
-# --- NUEVA RUTA PARA OBTENER EL HISTORIAL DE UN VEHÍCULO ---
+# ... (El resto de las rutas no necesitan cambios) ...
 @main_bp.route('/vehiculo/historial/<int:vehiculo_id>')
 @login_required
 @admin_required
 def historial_vehiculo(vehiculo_id):
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     registros = RegistroAcceso.query.filter_by(vehiculo_id=vehiculo.id).order_by(RegistroAcceso.timestamp.desc()).all()
-    
     historial = []
+    local_tz = pytz.timezone("America/Mexico_City")
     for registro in registros:
+        utc_dt = pytz.utc.localize(registro.timestamp)
+        local_dt = utc_dt.astimezone(local_tz)
         historial.append({
-            'timestamp': registro.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'timestamp': local_dt.strftime('%Y-%m-%d %H:%M:%S'),
             'tipo': registro.tipo
         })
-        
-    return jsonify({
-        'placa': vehiculo.placa,
-        'modelo': vehiculo.modelo,
-        'conductor': vehiculo.conductor,
-        'historial': historial
-    })
+    return jsonify({'placa': vehiculo.placa, 'modelo': vehiculo.modelo, 'conductor': vehiculo.conductor, 'historial': historial})
 
 @main_bp.route('/escaner_movil')
 @login_required
@@ -99,11 +99,13 @@ def verificar_qr():
         db.session.add(nuevo_registro)
         db.session.commit()
         socketio.emit('update_dashboard', {'message': 'Hay nuevos datos'})
-        return jsonify({'status': 'autorizado','message': f'{tipo_acceso.upper()} REGISTRADA','placa': vehiculo.placa,'modelo': vehiculo.modelo,'conductor': vehiculo.conductor})
+        timestamp_utc = datetime.utcnow()
+        local_tz = pytz.timezone("America/Mexico_City")
+        timestamp_local = pytz.utc.localize(timestamp_utc).astimezone(local_tz)
+        return jsonify({'status': 'autorizado','message': f'{tipo_acceso.upper()} REGISTRADA','placa': vehiculo.placa,'modelo': vehiculo.modelo,'conductor': vehiculo.conductor, 'timestamp': timestamp_local.isoformat()})
     else:
         return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'})
 
-# --- El resto de las rutas de admin permanecen igual ---
 @main_bp.route('/registrar_vehiculo', methods=['POST'])
 @login_required
 @admin_required
