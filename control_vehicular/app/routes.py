@@ -8,31 +8,31 @@ from flask import Blueprint, request, jsonify, render_template, redirect, url_fo
 from flask_login import login_required, current_user
 from functools import wraps
 from .models import Vehiculo, RegistroAcceso
-from . import db
+from . import db, socketio
 
 main_bp = Blueprint('main', __name__)
 
+# Decorador para requerir rol de Administrador
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated or current_user.role != 'admin':
-            abort(403)
+            abort(403) # Error de Acceso Prohibido
         return f(*args, **kwargs)
     return decorated_function
 
-# --- CORRECCIÓN: Se elimina el @main_bp.before_request global ---
-# Ahora @login_required se aplicará a cada ruta individualmente.
-
+# Ruta principal que decide qué dashboard mostrar
 @main_bp.route('/')
-@login_required # Se requiere login para ver cualquier dashboard
+@login_required
 def index():
-    # ... (lógica de búsqueda sin cambios)
     q_vehiculo = request.args.get('q_vehiculo', '')
     q_bitacora = request.args.get('q_bitacora', '')
+
     if q_vehiculo:
         vehiculos = Vehiculo.query.filter(Vehiculo.placa.contains(q_vehiculo) | Vehiculo.modelo.contains(q_vehiculo) | Vehiculo.conductor.contains(q_vehiculo)).all()
     else:
         vehiculos = Vehiculo.query.all()
+
     if q_bitacora:
         registros = RegistroAcceso.query.join(Vehiculo).filter(Vehiculo.placa.contains(q_bitacora) | Vehiculo.modelo.contains(q_bitacora) | Vehiculo.conductor.contains(q_bitacora)).order_by(RegistroAcceso.timestamp.desc()).all()
     else:
@@ -43,15 +43,16 @@ def index():
     else:
         return render_template('dashboard_vigilante.html', vehiculos=vehiculos, registros=registros, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
 
-# --- ESTA RUTA YA NO REQUIERE LOGIN ---
+# Ruta de la API para el escáner (no requiere login de navegador)
 @main_bp.route('/verificar_qr', methods=['POST'])
 def verificar_qr():
-    # ... (la lógica interna de esta función no cambia)
     data = request.json
     if not data or 'qr_id' not in data:
         return jsonify({'status': 'error', 'message': 'Datos inválidos'}), 400
+
     qr_id_recibido = data['qr_id']
     vehiculo = Vehiculo.query.filter_by(qr_id=qr_id_recibido).first()
+
     if vehiculo:
         if vehiculo.status == 'afuera':
             vehiculo.status = 'adentro'
@@ -61,19 +62,31 @@ def verificar_qr():
             vehiculo.status = 'afuera'
             tipo_acceso = 'Salida'
             mensaje_respuesta = 'SALIDA REGISTRADA'
+
         nuevo_registro = RegistroAcceso(vehiculo_id=vehiculo.id, tipo=tipo_acceso)
         db.session.add(nuevo_registro)
         db.session.commit()
-        return jsonify({'status': 'autorizado','message': mensaje_respuesta,'placa': vehiculo.placa,'modelo': vehiculo.modelo,'conductor': vehiculo.conductor,'timestamp': datetime.utcnow().isoformat()})
+        
+        # Emite el evento a todos los clientes conectados
+        socketio.emit('update_dashboard', {'message': 'Hay nuevos datos'})
+        
+        return jsonify({
+            'status': 'autorizado',
+            'message': mensaje_respuesta,
+            'placa': vehiculo.placa,
+            'modelo': vehiculo.modelo,
+            'conductor': vehiculo.conductor,
+            'timestamp': datetime.utcnow().isoformat()
+        })
     else:
         return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'}), 404
 
-# --- APLICAMOS LOGIN Y ADMIN A LAS RUTAS PROTEGIDAS ---
+# --- Rutas protegidas solo para Administradores ---
+
 @main_bp.route('/registrar_vehiculo', methods=['POST'])
 @login_required
 @admin_required
 def registrar_vehiculo():
-    # ... (código sin cambios)
     placa = request.form['placa']
     if Vehiculo.query.filter_by(placa=placa).first():
         flash(f'La placa "{placa}" ya existe en la base de datos.', 'error')
@@ -95,7 +108,6 @@ def registrar_vehiculo():
 @login_required
 @admin_required
 def editar_vehiculo(vehiculo_id):
-    # ... (código sin cambios)
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     if request.method == 'POST':
         vehiculo.placa = request.form['placa']
@@ -110,7 +122,6 @@ def editar_vehiculo(vehiculo_id):
 @login_required
 @admin_required
 def eliminar_vehiculo(vehiculo_id):
-    # ... (código sin cambios)
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     placa_eliminada = vehiculo.placa
     db.session.delete(vehiculo)
@@ -122,7 +133,6 @@ def eliminar_vehiculo(vehiculo_id):
 @login_required
 @admin_required
 def descargar_qr(vehiculo_id):
-    # ... (código sin cambios)
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     qr_img = qrcode.make(vehiculo.qr_id)
     buffered = BytesIO()
