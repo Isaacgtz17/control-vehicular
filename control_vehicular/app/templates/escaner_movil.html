@@ -50,43 +50,100 @@
       const statusText = document.getElementById("status-text");
       const readerContainer = document.getElementById("reader-container");
 
-      let isProcessing = false; // Variable para evitar escaneos múltiples
+      let isProcessing = false;
+
+      // --- NUEVA SECCIÓN DE AUDIO Y VIBRACIÓN ---
+
+      // Preparamos el contexto de audio. Debe iniciarse por una acción del usuario.
+      let audioContext;
+      window.addEventListener(
+        "click",
+        () => {
+          if (!audioContext) {
+            audioContext = new (window.AudioContext ||
+              window.webkitAudioContext)();
+          }
+        },
+        { once: true }
+      );
+
+      // Función para reproducir un sonido de éxito
+      function playSuccessSound() {
+        if (!audioContext) return;
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.type = "sine"; // Tono limpio
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // Tono agudo (La)
+        gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.1); // Duración de 100ms
+      }
+
+      // Función para reproducir un sonido de error
+      function playErrorSound() {
+        if (!audioContext) return;
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.type = "square"; // Tono más robótico/de error
+        oscillator.frequency.setValueAtTime(220, audioContext.currentTime); // Tono grave (La)
+        gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.2); // Duración de 200ms
+      }
+
+      // Función para hacer vibrar el teléfono
+      function triggerVibration(pattern) {
+        if (navigator.vibrate) {
+          navigator.vibrate(pattern);
+        }
+      }
+
+      // --- FIN DE LA NUEVA SECCIÓN ---
 
       function onScanSuccess(decodedText, decodedResult) {
-        // Si ya estamos procesando un código, ignoramos los nuevos.
         if (isProcessing) {
           return;
         }
+        isProcessing = true;
 
-        isProcessing = true; // Bloqueamos nuevos escaneos
-
-        // Detenemos la cámara inmediatamente
         html5QrcodeScanner.clear().catch((error) => {
           console.error("Fallo al detener el escáner.", error);
         });
-        readerContainer.style.display = "none"; // Ocultamos el visor de la cámara
+        readerContainer.style.display = "none";
 
         console.log(`Código detectado: ${decodedText}`);
-
         statusText.textContent = "Procesando...";
         statusText.className = "text-blue-600 font-bold";
 
-        // Enviamos el código al servidor
         fetch("{{ url_for('main.verificar_qr') }}", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ qr_id: decodedText }),
         })
           .then((response) => response.json())
           .then((data) => {
             console.log("Respuesta del servidor:", data);
             if (data.status === "autorizado") {
+              // Feedback de éxito
+              playSuccessSound();
+              triggerVibration(100); // Vibración corta
+
               resultPanel.className =
                 "bg-green-100 p-4 rounded-lg shadow-md text-center";
               statusText.innerHTML = `<strong class="text-lg text-green-800">${data.message}</strong><br><span class="text-green-700">${data.placa} - ${data.modelo}</span>`;
             } else {
+              // Feedback de error
+              playErrorSound();
+              triggerVibration([200, 100, 200]); // Doble vibración larga
+
               resultPanel.className =
                 "bg-red-100 p-4 rounded-lg shadow-md text-center";
               statusText.innerHTML = `<strong class="text-lg text-red-800">ACCESO DENEGADO</strong><br><span class="text-red-700">${data.message}</span>`;
@@ -94,6 +151,10 @@
           })
           .catch((error) => {
             console.error("Error:", error);
+            // Feedback de error de conexión
+            playErrorSound();
+            triggerVibration([200, 100, 200]);
+
             resultPanel.className =
               "bg-red-100 p-4 rounded-lg shadow-md text-center";
             statusText.innerHTML = `<strong class="text-lg text-red-800">ERROR</strong><br><span class="text-red-700">No se pudo conectar al servidor.</span>`;
@@ -104,18 +165,16 @@
         // No hacemos nada en caso de fallo, simplemente sigue escaneando.
       }
 
-      // Creamos la instancia del escáner
       let html5QrcodeScanner = new Html5QrcodeScanner(
         "reader",
         {
           fps: 10,
           qrbox: { width: 250, height: 250 },
-          supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA], // Forzar uso de la cámara
+          supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
         },
-        /* verbose= */ false
+        false
       );
 
-      // Iniciamos el escaneo
       html5QrcodeScanner.render(onScanSuccess, onScanFailure);
     </script>
   </body>
