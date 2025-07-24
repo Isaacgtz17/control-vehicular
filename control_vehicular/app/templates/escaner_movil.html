@@ -18,10 +18,12 @@
       </h1>
 
       <!-- Visor de la cámara -->
-      <div
-        id="reader"
-        class="w-full border-4 border-gray-400 rounded-lg overflow-hidden mb-4"
-      ></div>
+      <div id="reader-container">
+        <div
+          id="reader"
+          class="w-full border-4 border-gray-400 rounded-lg overflow-hidden mb-4"
+        ></div>
+      </div>
 
       <!-- Panel de Resultados -->
       <div
@@ -46,20 +48,25 @@
     <script>
       const resultPanel = document.getElementById("result-panel");
       const statusText = document.getElementById("status-text");
-      let lastScannedCode = null;
-      let scanCooldown = false;
+      const readerContainer = document.getElementById("reader-container");
+
+      let isProcessing = false; // Variable para evitar escaneos múltiples
 
       function onScanSuccess(decodedText, decodedResult) {
-        // Si ya estamos en cooldown, ignoramos el escaneo.
-
-        // Para evitar múltiples envíos del mismo código
-        if (decodedText === lastScannedCode) {
+        // Si ya estamos procesando un código, ignoramos los nuevos.
+        if (isProcessing) {
           return;
         }
 
+        isProcessing = true; // Bloqueamos nuevos escaneos
+
+        // Detenemos la cámara inmediatamente
+        html5QrcodeScanner.clear().catch((error) => {
+          console.error("Fallo al detener el escáner.", error);
+        });
+        readerContainer.style.display = "none"; // Ocultamos el visor de la cámara
+
         console.log(`Código detectado: ${decodedText}`);
-        lastScannedCode = decodedText;
-        scanCooldown = true; // Activamos el cooldown
 
         statusText.textContent = "Procesando...";
         statusText.className = "text-blue-600 font-bold";
@@ -90,18 +97,6 @@
             resultPanel.className =
               "bg-red-100 p-4 rounded-lg shadow-md text-center";
             statusText.innerHTML = `<strong class="text-lg text-red-800">ERROR</strong><br><span class="text-red-700">No se pudo conectar al servidor.</span>`;
-          })
-          .finally(() => {
-            // Después de 5 segundos, reseteamos para poder escanear de nuevo.
-            setTimeout(() => {
-              scanCooldown = false;
-              lastScannedCode = null;
-              statusText.textContent =
-                "Apunte la cámara al código QR del vehículo...";
-              statusText.className = "text-gray-500";
-              resultPanel.className =
-                "bg-white p-4 rounded-lg shadow-md text-center";
-            }, 5000);
           });
       }
 
@@ -112,7 +107,11 @@
       // Creamos la instancia del escáner
       let html5QrcodeScanner = new Html5QrcodeScanner(
         "reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA], // Forzar uso de la cámara
+        },
         /* verbose= */ false
       );
 
