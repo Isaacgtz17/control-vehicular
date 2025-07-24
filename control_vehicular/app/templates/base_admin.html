@@ -67,12 +67,13 @@
         });
         socket.on("update_dashboard", function (msg) {
           console.log("Actualización recibida:", msg);
-
-          // --- CORRECCIÓN AQUÍ ---
-          // Se eliminó la condición para que la página siempre se recargue.
           location.reload();
         });
       });
     </script>
+
+    <!-- --- CORRECCIÓN AQUÍ --- -->
+    <!-- Añadimos el bloque de scripts para que las páginas hijas puedan usarlo -->
+    {% block scripts %}{% endblock %}
   </body>
 </html>

@@ -54,6 +54,28 @@ def index():
     else:
         return render_template('dashboard_vigilante.html', vehiculos=vehiculos_pagination, registros=registros_pagination, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
 
+# --- NUEVA RUTA PARA OBTENER EL HISTORIAL DE UN VEHÍCULO ---
+@main_bp.route('/vehiculo/historial/<int:vehiculo_id>')
+@login_required
+@admin_required
+def historial_vehiculo(vehiculo_id):
+    vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
+    registros = RegistroAcceso.query.filter_by(vehiculo_id=vehiculo.id).order_by(RegistroAcceso.timestamp.desc()).all()
+    
+    historial = []
+    for registro in registros:
+        historial.append({
+            'timestamp': registro.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'tipo': registro.tipo
+        })
+        
+    return jsonify({
+        'placa': vehiculo.placa,
+        'modelo': vehiculo.modelo,
+        'conductor': vehiculo.conductor,
+        'historial': historial
+    })
+
 @main_bp.route('/escaner_movil')
 @login_required
 def escaner_movil():
@@ -61,7 +83,6 @@ def escaner_movil():
 
 @main_bp.route('/verificar_qr', methods=['POST'])
 def verificar_qr():
-    # ... (código sin cambios)
     data = request.json
     if not data or 'qr_id' not in data:
         return jsonify({'status': 'error', 'message': 'Datos inválidos'}), 400
@@ -71,21 +92,18 @@ def verificar_qr():
         if vehiculo.status == 'afuera':
             vehiculo.status = 'adentro'
             tipo_acceso = 'Entrada'
-            mensaje_respuesta = 'ENTRADA REGISTRADA'
         else:
             vehiculo.status = 'afuera'
             tipo_acceso = 'Salida'
-            mensaje_respuesta = 'SALIDA REGISTRADA'
         nuevo_registro = RegistroAcceso(vehiculo_id=vehiculo.id, tipo=tipo_acceso)
         db.session.add(nuevo_registro)
         db.session.commit()
         socketio.emit('update_dashboard', {'message': 'Hay nuevos datos'})
-        return jsonify({'status': 'autorizado','message': mensaje_respuesta,'placa': vehiculo.placa,'modelo': vehiculo.modelo,'conductor': vehiculo.conductor,'timestamp': datetime.utcnow().isoformat()})
+        return jsonify({'status': 'autorizado','message': f'{tipo_acceso.upper()} REGISTRADA','placa': vehiculo.placa,'modelo': vehiculo.modelo,'conductor': vehiculo.conductor})
     else:
-        return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'}), 404
+        return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'})
 
-# --- RUTAS DE GESTIÓN DE ADMIN ---
-
+# --- El resto de las rutas de admin permanecen igual ---
 @main_bp.route('/registrar_vehiculo', methods=['POST'])
 @login_required
 @admin_required
@@ -121,7 +139,7 @@ def editar_vehiculo(vehiculo_id):
         log_action("Editar Vehículo", f"Placa: {vehiculo.placa}")
         flash(f'Vehículo {vehiculo.placa} actualizado.', 'success')
         return redirect(url_for('main.index'))
-    return render_template('edit_vehiculo.html', vehiculo=vehiculo) # Necesitarás crear este template
+    return render_template('edit_vehiculo.html', vehiculo=vehiculo)
 
 @main_bp.route('/vehiculo/eliminar/<int:vehiculo_id>', methods=['POST'])
 @login_required
@@ -139,15 +157,12 @@ def eliminar_vehiculo(vehiculo_id):
 @login_required
 @admin_required
 def descargar_qr(vehiculo_id):
-    # ... (código sin cambios)
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     qr_img = qrcode.make(vehiculo.qr_id)
     buffered = io.BytesIO()
     qr_img.save(buffered, format="PNG")
     buffered.seek(0)
     return send_file(buffered,download_name=f"qr_{vehiculo.placa}.png",mimetype='image/png',as_attachment=True)
-
-# --- RUTAS PARA GESTIÓN DE USUARIOS ---
 
 @main_bp.route('/admin/users')
 @login_required
@@ -208,8 +223,6 @@ def delete_user(user_id):
     flash('Usuario eliminado.', 'success')
     return redirect(url_for('main.manage_users'))
 
-# --- RUTAS PARA REPORTES Y AUDITORÍA ---
-
 @main_bp.route('/reports')
 @login_required
 @admin_required
@@ -224,32 +237,14 @@ def export_csv():
     end_date_str = request.form.get('end_date')
     start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
     end_date = datetime.strptime(f"{end_date_str} 23:59:59", '%Y-%m-%d %H:%M:%S')
-
-    registros = RegistroAcceso.query.filter(
-        RegistroAcceso.timestamp >= start_date,
-        RegistroAcceso.timestamp <= end_date
-    ).order_by(RegistroAcceso.timestamp.asc()).all()
-    
-    # Generar CSV en memoria
+    registros = RegistroAcceso.query.filter(RegistroAcceso.timestamp >= start_date, RegistroAcceso.timestamp <= end_date).order_by(RegistroAcceso.timestamp.asc()).all()
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(['ID', 'Fecha y Hora', 'Tipo', 'Placa', 'Modelo', 'Conductor'])
     for registro in registros:
-        writer.writerow([
-            registro.id,
-            registro.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            registro.tipo,
-            registro.vehiculo.placa,
-            registro.vehiculo.modelo,
-            registro.vehiculo.conductor
-        ])
+        writer.writerow([registro.id, registro.timestamp.strftime('%Y-%m-%d %H:%M:%S'), registro.tipo, registro.vehiculo.placa, registro.vehiculo.modelo, registro.vehiculo.conductor])
     output.seek(0)
-    
-    return Response(
-        output,
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment;filename=reporte_accesos_{start_date_str}_a_{end_date_str}.csv"}
-    )
+    return Response(output, mimetype="text/csv", headers={"Content-Disposition": f"attachment;filename=reporte_accesos_{start_date_str}_a_{end_date_str}.csv"})
 
 @main_bp.route('/audit_log')
 @login_required
