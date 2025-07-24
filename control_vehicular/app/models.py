@@ -13,6 +13,10 @@ class Vehiculo(db.Model):
     conductor = db.Column(db.String(100), nullable=False)
     fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
     qr_code_b64 = db.Column(db.Text, nullable=False)
+    
+    # --- ACTUALIZACIÓN AQUÍ ---
+    # Añadimos 'cascade' para que al borrar un vehículo, se borren sus registros de acceso.
+    accesos = db.relationship('RegistroAcceso', backref='vehiculo', lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f'<Vehiculo {self.placa}>'
@@ -20,7 +24,7 @@ class Vehiculo(db.Model):
 class RegistroAcceso(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     vehiculo_id = db.Column(db.Integer, db.ForeignKey('vehiculo.id'), nullable=False)
-    vehiculo = db.relationship('Vehiculo', backref=db.backref('accesos', lazy=True))
+    # La relación se define ahora en el modelo 'padre' (Vehiculo) a través del backref.
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     tipo = db.Column(db.String(10), nullable=False) # 'Entrada' o 'Salida'
 

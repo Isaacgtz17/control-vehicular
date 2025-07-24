@@ -3,10 +3,12 @@
 
 import base64
 import qrcode
-import uuid # <-- Asegúrate de que uuid esté importado
+import uuid
 from io import BytesIO
 from datetime import datetime
-from flask import Blueprint, request, jsonify, render_template, redirect, url_for
+# Importamos 'send_file' para la descarga de archivos.
+from flask import Blueprint, request, jsonify, render_template, redirect, url_for, send_file
+
 from .models import Vehiculo, RegistroAcceso
 from . import db
 
@@ -25,22 +27,15 @@ def registrar_vehiculo():
     modelo = request.form['modelo']
     conductor = request.form['conductor']
 
-    # Verificamos si la placa ya existe para evitar duplicados
     if Vehiculo.query.filter_by(placa=placa).first():
-        # Aquí podrías agregar un mensaje de error para el usuario
         return redirect(url_for('main.index'))
 
-    # --- INICIO DE LA CORRECCIÓN ---
-    # 1. Generamos un ID único y explícito.
     qr_id_nuevo = str(uuid.uuid4())
-
-    # 2. Usamos ese nuevo ID para crear la imagen del código QR.
     qr_img = qrcode.make(qr_id_nuevo)
     buffered = BytesIO()
     qr_img.save(buffered, format="PNG")
     qr_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-    # 3. Usamos el MISMO ID para crear el objeto Vehiculo.
     nuevo_vehiculo = Vehiculo(
         qr_id=qr_id_nuevo,
         placa=placa,
@@ -48,7 +43,6 @@ def registrar_vehiculo():
         conductor=conductor,
         qr_code_b64=qr_b64
     )
-    # --- FIN DE LA CORRECCIÓN ---
     
     db.session.add(nuevo_vehiculo)
     db.session.commit()
@@ -78,3 +72,30 @@ def verificar_qr():
         })
     else:
         return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'}), 404
+
+# --- NUEVA RUTA PARA ELIMINAR VEHÍCULOS ---
+@main_bp.route('/vehiculo/eliminar/<int:vehiculo_id>', methods=['POST'])
+def eliminar_vehiculo(vehiculo_id):
+    vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
+    db.session.delete(vehiculo)
+    db.session.commit()
+    return redirect(url_for('main.index'))
+
+# --- NUEVA RUTA PARA DESCARGAR EL CÓDIGO QR ---
+@main_bp.route('/vehiculo/descargar_qr/<int:vehiculo_id>')
+def descargar_qr(vehiculo_id):
+    vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
+    
+    # Generamos la imagen del QR en memoria
+    qr_img = qrcode.make(vehiculo.qr_id)
+    buffered = BytesIO()
+    qr_img.save(buffered, format="PNG")
+    buffered.seek(0) # Regresamos el cursor al inicio del buffer
+
+    # Enviamos el archivo para su descarga
+    return send_file(
+        buffered,
+        download_name=f"qr_{vehiculo.placa}.png",
+        mimetype='image/png',
+        as_attachment=True
+    )
