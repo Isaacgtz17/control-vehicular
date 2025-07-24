@@ -1,18 +1,38 @@
 # run.py
-# Este archivo es el punto de entrada para ejecutar la aplicación.
-
+import click
 from app import create_app, db
+from app.models import User
 
-# Creamos la instancia de la aplicación llamando a nuestra factory function
 app = create_app()
 
-# Este bloque se asegura de que el script se ejecute solo cuando lo llamas directamente
-if __name__ == '__main__':
-    # Usamos app.app_context() para asegurarnos de que la aplicación
-    # esté configurada correctamente antes de intentar crear las tablas de la base de datos.
+@app.cli.command("create-user")
+@click.argument("username")
+@click.argument("password")
+@click.option("--role", default="vigilante", help="Rol del usuario (admin o vigilante)")
+def create_user(username, password, role):
+    """Crea un nuevo usuario en la base de datos."""
+    # --- CORRECCIÓN AQUÍ ---
+    # Envolvemos la lógica en app.app_context() para que tenga acceso a la BD.
     with app.app_context():
-        db.create_all() # Crea las tablas de la base de datos si no existen
-    
-    # Ejecuta la aplicación.
-    # host='0.0.0.0' permite que sea accesible desde otros dispositivos en la misma red.
+        # Primero, creamos todas las tablas si no existen.
+        db.create_all()
+
+        if User.query.filter_by(username=username).first():
+            print(f"El usuario {username} ya existe.")
+            return
+        
+        if role not in ['admin', 'vigilante']:
+            print("Rol inválido. Debe ser 'admin' o 'vigilante'.")
+            return
+
+        new_user = User(username=username, role=role)
+        new_user.set_password(password)
+        db.session.add(new_user)
+        db.session.commit()
+        print(f"Usuario {username} con rol {role} creado exitosamente.")
+
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True, host='0.0.0.0', port=5000)

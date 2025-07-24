@@ -9,10 +9,25 @@
   <body class="bg-gray-100 text-gray-800">
     <div class="container mx-auto p-4 md:p-8">
       <h1
-        class="text-3xl md:text-4xl font-bold text-center mb-8 text-slate-700"
+        class="text-3xl md:text-4xl font-bold text-center mb-4 text-slate-700"
       >
         Sistema de Control Vehicular
       </h1>
+
+      <!-- SECCIÓN DE MENSAJES DE FEEDBACK -->
+      {% with messages = get_flashed_messages(with_categories=true) %} {% if
+      messages %}
+      <div class="max-w-4xl mx-auto mb-4">
+        {% for category, message in messages %}
+        <div
+          class="p-4 rounded-md {{ 'bg-green-100 text-green-800' if category == 'success' else 'bg-red-100 text-red-800' }}"
+          role="alert"
+        >
+          <p>{{ message }}</p>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %} {% endwith %}
 
       <!-- Sección de Registro de Vehículos -->
       <div class="bg-white p-6 rounded-lg shadow-md mb-8">
@@ -52,7 +67,31 @@
 
       <!-- Sección de Vehículos Registrados -->
       <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 class="text-2xl font-semibold mb-4">Vehículos Registrados</h2>
+        <div
+          class="flex flex-col md:flex-row justify-between items-center mb-4"
+        >
+          <h2 class="text-2xl font-semibold">Vehículos Registrados</h2>
+          <!-- FORMULARIO DE BÚSQUEDA DE VEHÍCULOS -->
+          <form
+            action="{{ url_for('main.index') }}"
+            method="get"
+            class="flex items-center mt-4 md:mt-0"
+          >
+            <input
+              type="search"
+              name="q_vehiculo"
+              value="{{ q_vehiculo or '' }}"
+              placeholder="Buscar por placa, modelo..."
+              class="p-2 border rounded-l-md"
+            />
+            <button
+              type="submit"
+              class="bg-gray-600 text-white p-2 rounded-r-md hover:bg-gray-700"
+            >
+              Buscar
+            </button>
+          </form>
+        </div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {% for vehiculo in vehiculos %}
           <div
@@ -64,58 +103,28 @@
             <img
               src="data:image/png;base64,{{ vehiculo.qr_code_b64 }}"
               alt="Código QR para {{ vehiculo.placa }}"
-              class="mt-2 w-40 h-40"
+              class="mt-2 w-32 h-32"
             />
-
-            <!-- --- NUEVOS BOTONES --- -->
-            <div class="flex space-x-2 mt-4 w-full">
-              <!-- Botón de Descarga -->
+            <div class="grid grid-cols-3 gap-2 mt-4 w-full">
               <a
                 href="{{ url_for('main.descargar_qr', vehiculo_id=vehiculo.id) }}"
-                class="flex-1 flex items-center justify-center bg-green-500 text-white px-3 py-2 rounded-md hover:bg-green-600 transition-colors text-sm"
+                class="flex items-center justify-center bg-green-500 text-white p-2 rounded-md hover:bg-green-600 transition-colors text-xs"
+                >Descargar</a
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4 mr-1"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                  />
-                </svg>
-                Descargar
-              </a>
-
-              <!-- Formulario y Botón de Eliminar -->
+              <a
+                href="{{ url_for('main.editar_vehiculo', vehiculo_id=vehiculo.id) }}"
+                class="flex items-center justify-center bg-yellow-500 text-white p-2 rounded-md hover:bg-yellow-600 transition-colors text-xs"
+                >Editar</a
+              >
               <form
                 action="{{ url_for('main.eliminar_vehiculo', vehiculo_id=vehiculo.id) }}"
                 method="post"
-                class="flex-1"
                 onsubmit="return confirm('¿Estás seguro de que quieres eliminar este vehículo?');"
               >
                 <button
                   type="submit"
-                  class="w-full flex items-center justify-center bg-red-500 text-white px-3 py-2 rounded-md hover:bg-red-600 transition-colors text-sm"
+                  class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition-colors text-xs"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-4 w-4 mr-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
                   Eliminar
                 </button>
               </form>
@@ -127,7 +136,31 @@
 
       <!-- Sección de Bitácora de Accesos -->
       <div class="bg-white p-6 rounded-lg shadow-md">
-        <h2 class="text-2xl font-semibold mb-4">Bitácora de Accesos</h2>
+        <div
+          class="flex flex-col md:flex-row justify-between items-center mb-4"
+        >
+          <h2 class="text-2xl font-semibold">Bitácora de Accesos</h2>
+          <!-- FORMULARIO DE BÚSQUEDA EN BITÁCORA -->
+          <form
+            action="{{ url_for('main.index') }}"
+            method="get"
+            class="flex items-center mt-4 md:mt-0"
+          >
+            <input
+              type="search"
+              name="q_bitacora"
+              value="{{ q_bitacora or '' }}"
+              placeholder="Buscar en bitácora..."
+              class="p-2 border rounded-l-md"
+            />
+            <button
+              type="submit"
+              class="bg-gray-600 text-white p-2 rounded-r-md hover:bg-gray-700"
+            >
+              Buscar
+            </button>
+          </form>
+        </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
