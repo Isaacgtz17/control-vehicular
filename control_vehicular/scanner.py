@@ -1,17 +1,14 @@
-# scanner.py - Lector de Códigos QR con la Cámara (Versión con diagnóstico)
+# scanner.py
 import cv2
 import requests
 import time
 from pyzbar import pyzbar
 
-# --- Configuración ---
 BACKEND_URL = "http://127.0.0.1:5000/verificar_qr"
 COOLDOWN_SECONDS = 3
 
 def find_camera():
-    """Intenta encontrar y abrir una cámara disponible."""
     print("[DIAGNÓSTICO] Buscando cámaras disponibles...")
-    # Intentamos con los índices de cámara más comunes: 0, 1, -1
     for index in [0, 1, -1]:
         print(f"[DIAGNÓSTICO] Intentando abrir cámara con índice: {index}")
         cap = cv2.VideoCapture(index)
@@ -20,45 +17,29 @@ def find_camera():
             return cap
     return None
 
-# --- Inicialización ---
 print(">>> Iniciando escáner de QR...")
 cap = find_camera()
 
 if not cap:
-    print("*****************************************************")
-    print("  ERROR CRÍTICO: No se pudo encontrar una cámara.")
-    print("  Asegúrate de que la cámara esté conectada y no")
-    print("  esté siendo usada por otro programa (Zoom, Skype, etc).")
-    print("*****************************************************")
-    input("Presiona Enter para salir.") # Pausa para que el usuario pueda leer el error
+    print("ERROR CRÍTICO: No se pudo encontrar una cámara.")
+    input("Presiona Enter para salir.")
     exit()
 
-# Variable para guardar el último código detectado y el tiempo de detección
 last_code_detected = None
 last_detection_time = 0
 
 print("\n>>> Escáner iniciado correctamente. Apunta un código a la cámara.")
 print(">>> Presiona 'q' en la ventana de la cámara para salir.")
 
-# --- Bucle Principal ---
 while True:
-    # Leemos un frame (una imagen) de la cámara
     success, frame = cap.read()
     if not success:
-        print("[ADVERTENCIA] No se pudo leer el frame de la cámara. Intentando de nuevo...")
         time.sleep(0.5)
         continue
 
-    # Usamos pyzbar para buscar códigos QR en la imagen
     qr_codes = pyzbar.decode(frame)
 
-    # Procesamos cada código QR encontrado
     for qr in qr_codes:
-        # --- NUEVO CÓDIGO DE DIAGNÓSTICO ---
-        print(f"[DEBUG] Objeto QR encontrado: {qr}")
-        print(f"[DEBUG] Datos crudos (bytes): {qr.data}")
-        # --- FIN DEL CÓDIGO DE DIAGNÓSTICO ---
-        
         qr_data = qr.data.decode('utf-8')
         
         current_time = time.time()
@@ -72,19 +53,23 @@ while True:
                 print("[INFO] Verificando con el servidor...")
                 response = requests.post(BACKEND_URL, json={'qr_id': qr_data}, timeout=5)
                 
+                # --- LÓGICA DE RESPUESTA MEJORADA ---
                 if response.status_code == 200:
                     data = response.json()
-                    if data['status'] == 'autorizado':
+                    if data.get('status') == 'autorizado':
                         print("-----------------------------------------")
-                        print("  ACCESO AUTORIZADO")
-                        print(f"  Placa: {data['placa']}")
-                        print(f"  Modelo: {data['modelo']}")
-                        print(f"  Conductor: {data['conductor']}")
+                        # Imprimimos el mensaje que nos manda el servidor
+                        print(f"  {data.get('message', 'ACCIÓN REALIZADA')}")
+                        print(f"  Placa: {data.get('placa')}")
+                        print(f"  Modelo: {data.get('modelo')}")
                         print("-----------------------------------------")
+                    else:
+                        # Para otros casos de éxito (200) pero con error lógico
+                        print(f"??? RESPUESTA INESPERADA: {data.get('message')} ???")
                 elif response.status_code == 404:
                     data = response.json()
                     print("*****************************************")
-                    print(f"  ACCESO DENEGADO: {data['message']}")
+                    print(f"  ACCESO DENEGADO: {data.get('message')}")
                     print("*****************************************")
                 else:
                     print(f"[ERROR] Error del servidor: {response.status_code}")
@@ -96,13 +81,11 @@ while True:
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
         cv2.putText(frame, qr_data, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-    # Mostramos la ventana con la vista de la cámara
     cv2.imshow("Escaner de QR", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# --- Limpieza ---
 print("Cerrando escáner...")
 cap.release()
 cv2.destroyAllWindows()
