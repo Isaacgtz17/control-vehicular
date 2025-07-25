@@ -57,23 +57,20 @@
 
     <!-- SCRIPT PARA ACTUALIZACIÓN EN TIEMPO REAL -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+    <!-- --- CORRECCIÓN IMPORTANTE AQUÍ --- -->
+    <!-- Este bloque ahora solo establece la conexión. Las páginas hijas añadirán la lógica. -->
+    {% block scripts %}
     <script type="text/javascript">
       document.addEventListener("DOMContentLoaded", (event) => {
-        var socket = io.connect(
+        const socket = io.connect(
           location.protocol + "//" + document.domain + ":" + location.port
         );
         socket.on("connect", function () {
           console.log("Conectado al servidor en tiempo real.");
         });
-        socket.on("update_dashboard", function (msg) {
-          console.log("Actualización recibida:", msg);
-          location.reload();
-        });
       });
     </script>
-
-    <!-- --- CORRECCIÓN AQUÍ --- -->
-    <!-- Añadimos el bloque de scripts para que las páginas hijas puedan usarlo -->
-    {% block scripts %}{% endblock %}
+    {% endblock %}
   </body>
 </html>

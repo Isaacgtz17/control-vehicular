@@ -5,7 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_socketio import SocketIO
 from datetime import datetime
-import pytz  # Importamos la nueva librería
+import pytz
 
 db = SQLAlchemy()
 login_manager = LoginManager()
@@ -20,18 +20,19 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = 'dev'
     
+    # --- NUEVA CONFIGURACIÓN PARA SUBIDA DE FOTOS ---
+    app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'capturas')
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True) # Crea la carpeta si no existe
+
     db.init_app(app)
     login_manager.init_app(app)
     socketio.init_app(app)
 
-    # --- FILTRO DE PLANTILLA ACTUALIZADO PARA USAR PYTZ ---
     @app.template_filter('local_time')
     def local_time_filter(utc_dt):
         if utc_dt is None:
             return ""
-        # Asume que la hora de la BD es UTC (naive) y la convierte a consciente
         utc_dt = pytz.utc.localize(utc_dt)
-        # Convierte a la zona horaria de Mexico City (CD del Carmen)
         local_tz = pytz.timezone("America/Mexico_City")
         local_dt = utc_dt.astimezone(local_tz)
         return local_dt.strftime('%Y-%m-%d %H:%M:%S')

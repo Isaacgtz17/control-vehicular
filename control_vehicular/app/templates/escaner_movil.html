@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Escáner Móvil</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Librería para escanear QR -->
     <script
       src="https://unpkg.com/html5-qrcode"
       type="text/javascript"
@@ -17,12 +16,29 @@
         Escáner de Acceso Vehicular
       </h1>
 
-      <!-- Visor de la cámara -->
-      <div id="reader-container">
+      <!-- Contenedor del Escáner QR -->
+      <div id="qr-scanner-container">
         <div
           id="reader"
           class="w-full border-4 border-gray-400 rounded-lg overflow-hidden mb-4"
         ></div>
+      </div>
+
+      <!-- Contenedor de Captura de Foto (inicialmente oculto) -->
+      <div id="photo-capture-container" class="hidden">
+        <video
+          id="camera-preview"
+          class="w-full rounded-lg mb-4"
+          autoplay
+          playsinline
+        ></video>
+        <canvas id="photo-canvas" class="hidden"></canvas>
+        <button
+          id="capture-btn"
+          class="w-full bg-green-600 text-white font-bold py-3 rounded-lg text-lg"
+        >
+          Tomar Foto y Registrar
+        </button>
       </div>
 
       <!-- Panel de Resultados -->
@@ -31,7 +47,7 @@
         class="bg-white p-4 rounded-lg shadow-md text-center"
       >
         <p id="status-text" class="text-gray-500">
-          Apunte la cámara al código QR del vehículo...
+          Apunte la cámara al código QR...
         </p>
       </div>
 
@@ -39,143 +55,112 @@
         <a
           href="{{ url_for('main.index') }}"
           class="text-white bg-slate-600 hover:bg-slate-700 px-5 py-3 rounded-lg"
+          >Volver al Dashboard</a
         >
-          Volver al Dashboard
-        </a>
       </div>
     </div>
 
     <script>
+      const qrScannerContainer = document.getElementById(
+        "qr-scanner-container"
+      );
+      const photoCaptureContainer = document.getElementById(
+        "photo-capture-container"
+      );
+      const cameraPreview = document.getElementById("camera-preview");
+      const photoCanvas = document.getElementById("photo-canvas");
+      const captureBtn = document.getElementById("capture-btn");
       const resultPanel = document.getElementById("result-panel");
       const statusText = document.getElementById("status-text");
-      const readerContainer = document.getElementById("reader-container");
 
-      let isProcessing = false;
-
-      // --- NUEVA SECCIÓN DE AUDIO Y VIBRACIÓN ---
-
-      // Preparamos el contexto de audio. Debe iniciarse por una acción del usuario.
-      let audioContext;
-      window.addEventListener(
-        "click",
-        () => {
-          if (!audioContext) {
-            audioContext = new (window.AudioContext ||
-              window.webkitAudioContext)();
-          }
-        },
-        { once: true }
-      );
-
-      // Función para reproducir un sonido de éxito
-      function playSuccessSound() {
-        if (!audioContext) return;
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        oscillator.type = "sine"; // Tono limpio
-        oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // Tono agudo (La)
-        gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
-
-        oscillator.start();
-        oscillator.stop(audioContext.currentTime + 0.1); // Duración de 100ms
-      }
-
-      // Función para reproducir un sonido de error
-      function playErrorSound() {
-        if (!audioContext) return;
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        oscillator.type = "square"; // Tono más robótico/de error
-        oscillator.frequency.setValueAtTime(220, audioContext.currentTime); // Tono grave (La)
-        gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
-
-        oscillator.start();
-        oscillator.stop(audioContext.currentTime + 0.2); // Duración de 200ms
-      }
-
-      // Función para hacer vibrar el teléfono
-      function triggerVibration(pattern) {
-        if (navigator.vibrate) {
-          navigator.vibrate(pattern);
-        }
-      }
-
-      // --- FIN DE LA NUEVA SECCIÓN ---
+      let qrCodeData = null;
+      let stream = null;
 
       function onScanSuccess(decodedText, decodedResult) {
-        if (isProcessing) {
-          return;
-        }
-        isProcessing = true;
+        html5QrcodeScanner.clear();
+        qrScannerContainer.classList.add("hidden");
+        statusText.textContent = `QR detectado: ${decodedText.substring(
+          0,
+          8
+        )}...`;
+        qrCodeData = decodedText;
+        startCameraForPhoto();
+      }
 
-        html5QrcodeScanner.clear().catch((error) => {
-          console.error("Fallo al detener el escáner.", error);
-        });
-        readerContainer.style.display = "none";
+      function startCameraForPhoto() {
+        photoCaptureContainer.classList.remove("hidden");
+        statusText.textContent = "Prepare la cámara para la foto de evidencia.";
 
-        console.log(`Código detectado: ${decodedText}`);
-        statusText.textContent = "Procesando...";
-        statusText.className = "text-blue-600 font-bold";
+        navigator.mediaDevices
+          .getUserMedia({ video: { facingMode: "environment" } })
+          .then((s) => {
+            stream = s;
+            cameraPreview.srcObject = stream;
+          })
+          .catch((err) => {
+            console.error("Error al acceder a la cámara:", err);
+            statusText.textContent = "Error al activar la cámara para la foto.";
+          });
+      }
 
+      captureBtn.addEventListener("click", () => {
+        if (!stream) return;
+
+        statusText.textContent = "Procesando y subiendo...";
+        captureBtn.disabled = true;
+        captureBtn.classList.add("opacity-50");
+
+        const context = photoCanvas.getContext("2d");
+        photoCanvas.width = cameraPreview.videoWidth;
+        photoCanvas.height = cameraPreview.videoHeight;
+        context.drawImage(
+          cameraPreview,
+          0,
+          0,
+          photoCanvas.width,
+          photoCanvas.height
+        );
+
+        const photoBase64 = photoCanvas.toDataURL("image/jpeg", 0.8);
+
+        // Detener la cámara
+        stream.getTracks().forEach((track) => track.stop());
+
+        // Enviar datos al servidor
         fetch("{{ url_for('main.verificar_qr') }}", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ qr_id: decodedText }),
+          body: JSON.stringify({ qr_id: qrCodeData, photo: photoBase64 }),
         })
           .then((response) => response.json())
           .then((data) => {
-            console.log("Respuesta del servidor:", data);
             if (data.status === "autorizado") {
-              // Feedback de éxito
-              playSuccessSound();
-              triggerVibration(100); // Vibración corta
-
               resultPanel.className =
                 "bg-green-100 p-4 rounded-lg shadow-md text-center";
-              statusText.innerHTML = `<strong class="text-lg text-green-800">${data.message}</strong><br><span class="text-green-700">${data.placa} - ${data.modelo}</span>`;
+              statusText.innerHTML = `<strong class="text-lg text-green-800">${data.message}</strong><br><span class="text-green-700">${data.placa}</span>`;
             } else {
-              // Feedback de error
-              playErrorSound();
-              triggerVibration([200, 100, 200]); // Doble vibración larga
-
               resultPanel.className =
                 "bg-red-100 p-4 rounded-lg shadow-md text-center";
-              statusText.innerHTML = `<strong class="text-lg text-red-800">ACCESO DENEGADO</strong><br><span class="text-red-700">${data.message}</span>`;
+              statusText.innerHTML = `<strong class="text-lg text-red-800">ERROR</strong><br><span class="text-red-700">${data.message}</span>`;
             }
           })
           .catch((error) => {
             console.error("Error:", error);
-            // Feedback de error de conexión
-            playErrorSound();
-            triggerVibration([200, 100, 200]);
-
             resultPanel.className =
               "bg-red-100 p-4 rounded-lg shadow-md text-center";
-            statusText.innerHTML = `<strong class="text-lg text-red-800">ERROR</strong><br><span class="text-red-700">No se pudo conectar al servidor.</span>`;
+            statusText.innerHTML = `<strong class="text-lg text-red-800">ERROR DE RED</strong>`;
+          })
+          .finally(() => {
+            photoCaptureContainer.classList.add("hidden");
           });
-      }
+      });
 
-      function onScanFailure(error) {
-        // No hacemos nada en caso de fallo, simplemente sigue escaneando.
-      }
-
-      let html5QrcodeScanner = new Html5QrcodeScanner(
+      const html5QrcodeScanner = new Html5QrcodeScanner(
         "reader",
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
-        },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
         false
       );
-
-      html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+      html5QrcodeScanner.render(onScanSuccess, (error) => {});
     </script>
   </body>
 </html>
