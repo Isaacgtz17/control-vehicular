@@ -11,7 +11,6 @@ from . import db, socketio
 
 main_bp = Blueprint('main', __name__)
 
-# ... (log_action, admin_required, index, historial_vehiculo, escaner_movil sin cambios) ...
 def log_action(action, details=""):
     log = AuditLog(user_id=current_user.id, action=action, details=details)
     db.session.add(log)
@@ -68,27 +67,22 @@ def historial_vehiculo(vehiculo_id):
 def escaner_movil():
     return render_template('escaner_movil.html')
 
-# --- RUTA DE VERIFICACIÓN ACTUALIZADA PARA EMITIR DATOS COMPLETOS ---
 @main_bp.route('/verificar_qr', methods=['POST'])
 def verificar_qr():
     data = request.json
     qr_id = data.get('qr_id')
     photo_data = data.get('photo')
-
     if not qr_id:
         return jsonify({'status': 'error', 'message': 'Falta el ID del QR'}), 400
-
     vehiculo = Vehiculo.query.filter_by(qr_id=qr_id).first()
     if not vehiculo:
         return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'}), 404
-
     if vehiculo.status == 'afuera':
         vehiculo.status = 'adentro'
         tipo_acceso = 'Entrada'
     else:
         vehiculo.status = 'afuera'
         tipo_acceso = 'Salida'
-
     photo_filename = None
     if photo_data:
         try:
@@ -102,42 +96,18 @@ def verificar_qr():
         except Exception as e:
             print(f"Error al guardar la foto: {e}")
             photo_filename = None
-
     nuevo_registro = RegistroAcceso(vehiculo_id=vehiculo.id, tipo=tipo_acceso, photo_filename=photo_filename)
     db.session.add(nuevo_registro)
     db.session.commit()
-    
-    # Preparamos los datos para la actualización en vivo
     local_tz = pytz.timezone("America/Mexico_City")
     local_timestamp = pytz.utc.localize(nuevo_registro.timestamp).astimezone(local_tz)
-
     unidades_en_patio = Vehiculo.query.filter_by(status='adentro').count()
     total_unidades = Vehiculo.query.count()
     unidades_en_ruta = total_unidades - unidades_en_patio
-
-    update_data = {
-        'new_log': {
-            'timestamp': local_timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'tipo': nuevo_registro.tipo,
-            'placa': vehiculo.placa,
-            'modelo': vehiculo.modelo,
-            'conductor': vehiculo.conductor,
-            'photo_filename': nuevo_registro.photo_filename
-        },
-        'fleet_status': {
-            'en_patio': unidades_en_patio,
-            'en_ruta': unidades_en_ruta
-        },
-        'vehicle_update': {
-            'id': vehiculo.id,
-            'status': vehiculo.status
-        }
-    }
+    update_data = {'new_log': {'timestamp': local_timestamp.strftime('%Y-%m-%d %H:%M:%S'),'tipo': nuevo_registro.tipo,'placa': vehiculo.placa,'modelo': vehiculo.modelo,'conductor': vehiculo.conductor,'photo_filename': nuevo_registro.photo_filename},'fleet_status': {'en_patio': unidades_en_patio,'en_ruta': unidades_en_ruta},'vehicle_update': {'id': vehiculo.id,'status': vehiculo.status}}
     socketio.emit('update_dashboard', update_data)
-    
     return jsonify({'status': 'autorizado', 'message': f'{tipo_acceso.upper()} REGISTRADA', 'placa': vehiculo.placa})
 
-# ... (El resto de las rutas de admin permanecen exactamente igual) ...
 @main_bp.route('/registrar_vehiculo', methods=['POST'])
 @login_required
 @admin_required
@@ -173,7 +143,8 @@ def editar_vehiculo(vehiculo_id):
         log_action("Editar Vehículo", f"Placa: {vehiculo.placa}")
         flash(f'Vehículo {vehiculo.placa} actualizado.', 'success')
         return redirect(url_for('main.index'))
-    return render_template('edit_vehiculo.html', vehiculo=vehiculo)
+    # --- CORRECCIÓN AQUÍ ---
+    return render_template('editar_vehiculo.html', vehiculo=vehiculo)
 
 @main_bp.route('/vehiculo/eliminar/<int:vehiculo_id>', methods=['POST'])
 @login_required

@@ -1,80 +1,63 @@
-<!DOCTYPE html>
-<html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Editar Vehículo - Panel de Control</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body class="bg-gray-100 text-gray-800">
-    <div class="container mx-auto p-4 md:p-8">
-      <h1
-        class="text-3xl md:text-4xl font-bold text-center mb-8 text-slate-700"
+{% extends "base_admin.html" %} {% block title %}Editar Vehículo{% endblock %}
+{% block content %}
+<div class="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
+  <h2 class="text-2xl font-semibold mb-4">Editar Vehículo</h2>
+  <form
+    action="{{ url_for('main.editar_vehiculo', vehiculo_id=vehiculo.id) }}"
+    method="post"
+  >
+    <div class="mb-4">
+      <label for="placa" class="block text-gray-700 font-semibold mb-2"
+        >Placa del Vehículo</label
       >
-        Editar Vehículo
-      </h1>
-
-      <div class="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
-        <form
-          action="{{ url_for('main.editar_vehiculo', vehiculo_id=vehiculo.id) }}"
-          method="post"
-        >
-          <div class="mb-4">
-            <label for="placa" class="block text-gray-700 font-semibold mb-2"
-              >Placa del Vehículo</label
-            >
-            <input
-              type="text"
-              name="placa"
-              id="placa"
-              value="{{ vehiculo.placa }}"
-              required
-              class="p-2 border rounded w-full"
-            />
-          </div>
-          <div class="mb-4">
-            <label for="modelo" class="block text-gray-700 font-semibold mb-2"
-              >Modelo</label
-            >
-            <input
-              type="text"
-              name="modelo"
-              id="modelo"
-              value="{{ vehiculo.modelo }}"
-              required
-              class="p-2 border rounded w-full"
-            />
-          </div>
-          <div class="mb-4">
-            <label
-              for="conductor"
-              class="block text-gray-700 font-semibold mb-2"
-              >Nombre del Conductor</label
-            >
-            <input
-              type="text"
-              name="conductor"
-              id="conductor"
-              value="{{ vehiculo.conductor }}"
-              required
-              class="p-2 border rounded w-full"
-            />
-          </div>
-          <div class="flex items-center space-x-4 mt-6">
-            <a
-              href="{{ url_for('main.index') }}"
-              class="w-1/2 text-center bg-gray-300 text-gray-800 p-3 rounded-lg hover:bg-gray-400 transition-colors"
-              >Cancelar</a
-            >
-            <button
-              type="submit"
-              class="w-1/2 bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Guardar Cambios
-            </button>
-          </div>
-        </form>
-      </div>
+      <input
+        type="text"
+        name="placa"
+        id="placa"
+        value="{{ vehiculo.placa }}"
+        required
+        class="p-2 border rounded w-full"
+      />
     </div>
-  </body>
-</html>
+    <div class="mb-4">
+      <label for="modelo" class="block text-gray-700 font-semibold mb-2"
+        >Modelo</label
+      >
+      <input
+        type="text"
+        name="modelo"
+        id="modelo"
+        value="{{ vehiculo.modelo }}"
+        required
+        class="p-2 border rounded w-full"
+      />
+    </div>
+    <div class="mb-4">
+      <label for="conductor" class="block text-gray-700 font-semibold mb-2"
+        >Nombre del Conductor</label
+      >
+      <input
+        type="text"
+        name="conductor"
+        id="conductor"
+        value="{{ vehiculo.conductor }}"
+        required
+        class="p-2 border rounded w-full"
+      />
+    </div>
+    <div class="flex items-center space-x-4 mt-6">
+      <a
+        href="{{ url_for('main.index') }}"
+        class="w-1/2 text-center bg-gray-300 text-gray-800 p-3 rounded-lg hover:bg-gray-400"
+        >Cancelar</a
+      >
+      <button
+        type="submit"
+        class="w-1/2 bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700"
+      >
+        Guardar Cambios
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
