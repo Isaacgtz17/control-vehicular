@@ -19,6 +19,9 @@ class User(UserMixin, db.Model):
 
 class Vehiculo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    # --- NUEVO CAMPO ---
+    numero_economico = db.Column(db.String(50), unique=True, nullable=False)
+    
     qr_id = db.Column(db.String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     placa = db.Column(db.String(20), unique=True, nullable=False)
     modelo = db.Column(db.String(50), nullable=False)
@@ -33,7 +36,6 @@ class RegistroAcceso(db.Model):
     vehiculo_id = db.Column(db.Integer, db.ForeignKey('vehiculo.id'), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     tipo = db.Column(db.String(10), nullable=False)
-    # --- NUEVO CAMPO PARA EL NOMBRE DE LA FOTO ---
     photo_filename = db.Column(db.String(100), nullable=True)
 
 class AuditLog(db.Model):

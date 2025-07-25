@@ -12,6 +12,7 @@ from . import db, socketio
 main_bp = Blueprint('main', __name__)
 
 def log_action(action, details=""):
+    """Helper function to log admin actions."""
     log = AuditLog(user_id=current_user.id, action=action, details=details)
     db.session.add(log)
     db.session.commit()
@@ -31,18 +32,41 @@ def index():
     page_registros = request.args.get('page_registros', 1, type=int)
     q_vehiculo = request.args.get('q_vehiculo', '')
     q_bitacora = request.args.get('q_bitacora', '')
+
     unidades_en_patio = Vehiculo.query.filter_by(status='adentro').count()
     total_unidades = Vehiculo.query.count()
     unidades_en_ruta = total_unidades - unidades_en_patio
+
     if q_vehiculo:
-        vehiculos_pagination = Vehiculo.query.filter(Vehiculo.placa.contains(q_vehiculo) | Vehiculo.modelo.contains(q_vehiculo) | Vehiculo.conductor.contains(q_vehiculo)).paginate(page=page_vehiculos, per_page=9)
+        vehiculos_pagination = Vehiculo.query.filter(
+            Vehiculo.placa.contains(q_vehiculo) | 
+            Vehiculo.modelo.contains(q_vehiculo) | 
+            Vehiculo.conductor.contains(q_vehiculo) |
+            Vehiculo.numero_economico.contains(q_vehiculo)
+        ).paginate(page=page_vehiculos, per_page=9)
     else:
         vehiculos_pagination = Vehiculo.query.paginate(page=page_vehiculos, per_page=9)
+
     if q_bitacora:
-        registros_pagination = RegistroAcceso.query.join(Vehiculo).filter(Vehiculo.placa.contains(q_bitacora) | Vehiculo.modelo.contains(q_bitacora) | Vehiculo.conductor.contains(q_bitacora)).order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
+        registros_pagination = RegistroAcceso.query.join(Vehiculo).filter(
+            Vehiculo.placa.contains(q_bitacora) | 
+            Vehiculo.modelo.contains(q_bitacora) | 
+            Vehiculo.conductor.contains(q_bitacora) |
+            Vehiculo.numero_economico.contains(q_bitacora)
+        ).order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
     else:
         registros_pagination = RegistroAcceso.query.order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
-    template_data = {'vehiculos': vehiculos_pagination,'registros': registros_pagination,'q_vehiculo': q_vehiculo,'q_bitacora': q_bitacora,'unidades_en_patio': unidades_en_patio,'unidades_en_ruta': unidades_en_ruta,'total_unidades': total_unidades}
+
+    template_data = {
+        'vehiculos': vehiculos_pagination,
+        'registros': registros_pagination,
+        'q_vehiculo': q_vehiculo,
+        'q_bitacora': q_bitacora,
+        'unidades_en_patio': unidades_en_patio,
+        'unidades_en_ruta': unidades_en_ruta,
+        'total_unidades': total_unidades
+    }
+
     if current_user.role == 'admin':
         return render_template('index.html', **template_data)
     else:
@@ -59,8 +83,18 @@ def historial_vehiculo(vehiculo_id):
     for registro in registros:
         utc_dt = pytz.utc.localize(registro.timestamp)
         local_dt = utc_dt.astimezone(local_tz)
-        historial.append({'timestamp': local_dt.strftime('%Y-%m-%d %H:%M:%S'),'tipo': registro.tipo, 'photo_filename': registro.photo_filename})
-    return jsonify({'placa': vehiculo.placa, 'modelo': vehiculo.modelo, 'conductor': vehiculo.conductor, 'historial': historial})
+        historial.append({
+            'timestamp': local_dt.strftime('%Y-%m-%d %H:%M:%S'),
+            'tipo': registro.tipo, 
+            'photo_filename': registro.photo_filename
+        })
+    return jsonify({
+        'placa': vehiculo.placa, 
+        'modelo': vehiculo.modelo, 
+        'conductor': vehiculo.conductor, 
+        'historial': historial,
+        'numero_economico': vehiculo.numero_economico
+    })
 
 @main_bp.route('/escaner_movil')
 @login_required
@@ -72,17 +106,21 @@ def verificar_qr():
     data = request.json
     qr_id = data.get('qr_id')
     photo_data = data.get('photo')
+
     if not qr_id:
         return jsonify({'status': 'error', 'message': 'Falta el ID del QR'}), 400
+
     vehiculo = Vehiculo.query.filter_by(qr_id=qr_id).first()
     if not vehiculo:
         return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'}), 404
+
     if vehiculo.status == 'afuera':
         vehiculo.status = 'adentro'
         tipo_acceso = 'Entrada'
     else:
         vehiculo.status = 'afuera'
         tipo_acceso = 'Salida'
+
     photo_filename = None
     if photo_data:
         try:
@@ -96,26 +134,49 @@ def verificar_qr():
         except Exception as e:
             print(f"Error al guardar la foto: {e}")
             photo_filename = None
+
     nuevo_registro = RegistroAcceso(vehiculo_id=vehiculo.id, tipo=tipo_acceso, photo_filename=photo_filename)
     db.session.add(nuevo_registro)
     db.session.commit()
+    
     local_tz = pytz.timezone("America/Mexico_City")
     local_timestamp = pytz.utc.localize(nuevo_registro.timestamp).astimezone(local_tz)
     unidades_en_patio = Vehiculo.query.filter_by(status='adentro').count()
     total_unidades = Vehiculo.query.count()
     unidades_en_ruta = total_unidades - unidades_en_patio
-    update_data = {'new_log': {'timestamp': local_timestamp.strftime('%Y-%m-%d %H:%M:%S'),'tipo': nuevo_registro.tipo,'placa': vehiculo.placa,'modelo': vehiculo.modelo,'conductor': vehiculo.conductor,'photo_filename': nuevo_registro.photo_filename},'fleet_status': {'en_patio': unidades_en_patio,'en_ruta': unidades_en_ruta},'vehicle_update': {'id': vehiculo.id,'status': vehiculo.status}}
+    update_data = {
+        'new_log': {
+            'timestamp': local_timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'tipo': nuevo_registro.tipo,
+            'placa': vehiculo.placa,
+            'modelo': vehiculo.modelo,
+            'conductor': vehiculo.conductor,
+            'photo_filename': nuevo_registro.photo_filename
+        },
+        'fleet_status': {
+            'en_patio': unidades_en_patio,
+            'en_ruta': unidades_en_ruta
+        },
+        'vehicle_update': {
+            'id': vehiculo.id,
+            'status': vehiculo.status
+        }
+    }
     socketio.emit('update_dashboard', update_data)
+    
     return jsonify({'status': 'autorizado', 'message': f'{tipo_acceso.upper()} REGISTRADA', 'placa': vehiculo.placa})
 
 @main_bp.route('/registrar_vehiculo', methods=['POST'])
 @login_required
 @admin_required
 def registrar_vehiculo():
+    numero_economico = request.form['numero_economico']
     placa = request.form['placa']
-    if Vehiculo.query.filter_by(placa=placa).first():
-        flash(f'La placa "{placa}" ya existe.', 'error')
+    
+    if Vehiculo.query.filter_by(placa=placa).first() or Vehiculo.query.filter_by(numero_economico=numero_economico).first():
+        flash(f'La placa "{placa}" o el No. Económico "{numero_economico}" ya existen.', 'error')
         return redirect(url_for('main.index'))
+
     modelo = request.form['modelo']
     conductor = request.form['conductor']
     qr_id_nuevo = str(uuid.uuid4())
@@ -123,11 +184,19 @@ def registrar_vehiculo():
     buffered = io.BytesIO()
     qr_img.save(buffered, format="PNG")
     qr_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-    nuevo_vehiculo = Vehiculo(qr_id=qr_id_nuevo, placa=placa, modelo=modelo, conductor=conductor, qr_code_b64=qr_b64)
+    
+    nuevo_vehiculo = Vehiculo(
+        numero_economico=numero_economico,
+        qr_id=qr_id_nuevo,
+        placa=placa,
+        modelo=modelo,
+        conductor=conductor,
+        qr_code_b64=qr_b64
+    )
     db.session.add(nuevo_vehiculo)
     db.session.commit()
-    log_action("Crear Vehículo", f"Placa: {placa}")
-    flash(f'Vehículo {placa} registrado.', 'success')
+    log_action("Crear Vehículo", f"No. Económico: {numero_economico}, Placa: {placa}")
+    flash(f'Unidad {numero_economico} registrada.', 'success')
     return redirect(url_for('main.index'))
 
 @main_bp.route('/vehiculo/editar/<int:vehiculo_id>', methods=['GET', 'POST'])
@@ -136,14 +205,14 @@ def registrar_vehiculo():
 def editar_vehiculo(vehiculo_id):
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     if request.method == 'POST':
+        vehiculo.numero_economico = request.form['numero_economico']
         vehiculo.placa = request.form['placa']
         vehiculo.modelo = request.form['modelo']
         vehiculo.conductor = request.form['conductor']
         db.session.commit()
-        log_action("Editar Vehículo", f"Placa: {vehiculo.placa}")
-        flash(f'Vehículo {vehiculo.placa} actualizado.', 'success')
+        log_action("Editar Vehículo", f"No. Económico: {vehiculo.numero_economico}")
+        flash(f'Unidad {vehiculo.numero_economico} actualizada.', 'success')
         return redirect(url_for('main.index'))
-    # --- CORRECCIÓN AQUÍ ---
     return render_template('editar_vehiculo.html', vehiculo=vehiculo)
 
 @main_bp.route('/vehiculo/eliminar/<int:vehiculo_id>', methods=['POST'])
