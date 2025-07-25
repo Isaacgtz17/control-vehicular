@@ -27,36 +27,41 @@ def admin_required(f):
 @main_bp.route('/')
 @login_required
 def index():
-    # --- CORRECCIÓN: Parámetros de página separados ---
     page_vehiculos = request.args.get('page_vehiculos', 1, type=int)
     page_registros = request.args.get('page_registros', 1, type=int)
-    
     q_vehiculo = request.args.get('q_vehiculo', '')
     q_bitacora = request.args.get('q_bitacora', '')
 
+    # --- LÓGICA PARA EL ESTADO DE LA FLOTA ---
+    unidades_en_patio = Vehiculo.query.filter_by(status='adentro').count()
+    total_unidades = Vehiculo.query.count()
+    unidades_en_ruta = total_unidades - unidades_en_patio
+
+    # Lógica de paginación y búsqueda (sin cambios)
     if q_vehiculo:
-        vehiculos_pagination = Vehiculo.query.filter(
-            Vehiculo.placa.contains(q_vehiculo) | 
-            Vehiculo.modelo.contains(q_vehiculo) | 
-            Vehiculo.conductor.contains(q_vehiculo)
-        ).paginate(page=page_vehiculos, per_page=9)
+        vehiculos_pagination = Vehiculo.query.filter(Vehiculo.placa.contains(q_vehiculo) | Vehiculo.modelo.contains(q_vehiculo) | Vehiculo.conductor.contains(q_vehiculo)).paginate(page=page_vehiculos, per_page=9)
     else:
         vehiculos_pagination = Vehiculo.query.paginate(page=page_vehiculos, per_page=9)
-
     if q_bitacora:
-        registros_pagination = RegistroAcceso.query.join(Vehiculo).filter(
-            Vehiculo.placa.contains(q_bitacora) | 
-            Vehiculo.modelo.contains(q_bitacora) | 
-            Vehiculo.conductor.contains(q_bitacora)
-        ).order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
+        registros_pagination = RegistroAcceso.query.join(Vehiculo).filter(Vehiculo.placa.contains(q_bitacora) | Vehiculo.modelo.contains(q_bitacora) | Vehiculo.conductor.contains(q_bitacora)).order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
     else:
         registros_pagination = RegistroAcceso.query.order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
 
+    # Pasamos los nuevos datos a las plantillas
+    template_data = {
+        'vehiculos': vehiculos_pagination,
+        'registros': registros_pagination,
+        'q_vehiculo': q_vehiculo,
+        'q_bitacora': q_bitacora,
+        'unidades_en_patio': unidades_en_patio,
+        'unidades_en_ruta': unidades_en_ruta,
+        'total_unidades': total_unidades
+    }
+
     if current_user.role == 'admin':
-        return render_template('index.html', vehiculos=vehiculos_pagination, registros=registros_pagination, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
+        return render_template('index.html', **template_data)
     else:
-        # También actualizamos la vista del vigilante
-        return render_template('dashboard_vigilante.html', vehiculos=vehiculos_pagination, registros=registros_pagination, q_vehiculo=q_vehiculo, q_bitacora=q_bitacora)
+        return render_template('dashboard_vigilante.html', **template_data)
 
 # ... (El resto de las rutas no necesitan cambios) ...
 @main_bp.route('/vehiculo/historial/<int:vehiculo_id>')

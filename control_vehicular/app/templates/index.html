@@ -1,6 +1,22 @@
 {% extends "base_admin.html" %} {% block title %}Dashboard Principal{% endblock
 %} {% block content %}
-<!-- SECCIÓN DE REGISTRO -->
+<!-- SECCIÓN DE ESTADO DE FLOTA -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+  <div class="bg-white p-6 rounded-lg shadow-md text-center">
+    <h3 class="text-lg font-semibold text-gray-500">Unidades en Patio</h3>
+    <p class="text-5xl font-bold text-green-600">{{ unidades_en_patio }}</p>
+  </div>
+  <div class="bg-white p-6 rounded-lg shadow-md text-center">
+    <h3 class="text-lg font-semibold text-gray-500">Unidades en Ruta</h3>
+    <p class="text-5xl font-bold text-yellow-600">{{ unidades_en_ruta }}</p>
+  </div>
+  <div class="bg-white p-6 rounded-lg shadow-md text-center">
+    <h3 class="text-lg font-semibold text-gray-500">Total de Unidades</h3>
+    <p class="text-5xl font-bold text-slate-700">{{ total_unidades }}</p>
+  </div>
+</div>
+
+<!-- ... (El resto del contenido de index.html no cambia) ... -->
 <div class="bg-white p-6 rounded-lg shadow-md mb-8">
   <h2 class="text-2xl font-semibold mb-4">Registrar Nuevo Vehículo</h2>
   <form action="{{ url_for('main.registrar_vehiculo') }}" method="post">
@@ -35,8 +51,6 @@
     </button>
   </form>
 </div>
-
-<!-- Sección de Bitácora de Accesos -->
 <div class="bg-white p-6 rounded-lg shadow-md mb-8">
   <div class="flex flex-col md:flex-row justify-between items-center mb-4">
     <h2 class="text-2xl font-semibold">Bitácora de Accesos</h2>
@@ -91,7 +105,6 @@
       </tbody>
     </table>
   </div>
-  <!-- Paginación para bitácora -->
   <div class="mt-4">
     {% if registros.has_prev %}<a
       href="{{ url_for('main.index', page_registros=registros.prev_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
@@ -105,8 +118,6 @@
     >{% endif %}
   </div>
 </div>
-
-<!-- Sección de Vehículos Registrados -->
 <div class="bg-white p-6 rounded-lg shadow-md">
   <div class="flex flex-col md:flex-row justify-between items-center mb-4">
     <h2 class="text-2xl font-semibold">Vehículos Registrados</h2>
@@ -183,7 +194,6 @@
     </div>
     {% endfor %}
   </div>
-  <!-- Paginación para vehículos -->
   <div class="mt-4">
     {% if vehiculos.has_prev %}<a
       href="{{ url_for('main.index', page_vehiculos=vehiculos.prev_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
@@ -197,8 +207,6 @@
     >{% endif %}
   </div>
 </div>
-
-<!-- Modal para Historial de Vehículo -->
 <div
   id="historialModal"
   class="fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full hidden z-50 flex items-center justify-center p-4"
@@ -227,46 +235,29 @@
     const modalTitle = document.getElementById("modalTitle");
     const modalContent = document.getElementById("modalContent");
     const vehicleCards = document.querySelectorAll(".vehicle-card");
-
     const openModal = () => modal.classList.remove("hidden");
     const closeModal = () => modal.classList.add("hidden");
-
     vehicleCards.forEach((card) => {
       card.addEventListener("click", function (event) {
         if (event.target.closest("a, button, form")) {
           return;
         }
-
         const vehiculoId = this.dataset.vehiculoId;
         modalContent.innerHTML = "<p>Cargando historial...</p>";
         openModal();
-
         fetch(`/vehiculo/historial/${vehiculoId}`)
           .then((response) => response.json())
           .then((data) => {
             modalTitle.textContent = `Historial de: ${data.placa}`;
-            let contentHtml = `
-                        <p class="mb-2"><strong>Modelo:</strong> ${data.modelo}</p>
-                        <p class="mb-4"><strong>Conductor:</strong> ${data.conductor}</p>
-                    `;
-
+            let contentHtml = `<p class="mb-2"><strong>Modelo:</strong> ${data.modelo}</p><p class="mb-4"><strong>Conductor:</strong> ${data.conductor}</p>`;
             if (data.historial.length > 0) {
-              contentHtml += `
-                            <table class="w-full text-left border-collapse">
-                                <thead><tr class="bg-gray-200"><th class="p-2 border">Fecha y Hora</th><th class="p-2 border">Tipo</th></tr></thead>
-                                <tbody>
-                        `;
+              contentHtml += `<table class="w-full text-left border-collapse"><thead><tr class="bg-gray-200"><th class="p-2 border">Fecha y Hora</th><th class="p-2 border">Tipo</th></tr></thead><tbody>`;
               data.historial.forEach((registro) => {
                 const tipoClass =
                   registro.tipo === "Entrada"
                     ? "text-green-600"
                     : "text-red-600";
-                contentHtml += `
-                                <tr class="hover:bg-gray-50">
-                                    <td class="p-2 border">${registro.timestamp}</td>
-                                    <td class="p-2 border font-bold ${tipoClass}">${registro.tipo}</td>
-                                </tr>
-                            `;
+                contentHtml += `<tr class="hover:bg-gray-50"><td class="p-2 border">${registro.timestamp}</td><td class="p-2 border font-bold ${tipoClass}">${registro.tipo}</td></tr>`;
               });
               contentHtml += "</tbody></table>";
             } else {
@@ -282,7 +273,6 @@
           });
       });
     });
-
     closeModalButton.addEventListener("click", closeModal);
     modal.addEventListener("click", function (event) {
       if (event.target === this) {
