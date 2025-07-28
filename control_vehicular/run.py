@@ -6,38 +6,12 @@ import qrcode
 import io
 import uuid
 from app import create_app, db, socketio
-from app.models import User, Vehiculo, Operador # Importar Operador
+from app.models import User, Vehiculo, Operador
 
 app = create_app()
 
-@app.cli.command("seed-operators")
-def seed_operators():
-    """Puebla la base de datos con la lista inicial de operadores."""
-    with app.app_context():
-        db.create_all()
-        
-        # Lista de operadores extraída del PDF
-        lista_operadores = [
-            "Fernando Javier Arias Lopez", "Jesus Antonio Jimenez Hernandez", "David Alfonso Escobedo de la Cruz",
-            "Ignacio Sanchez Cruz", "Conrado Rejon Garcia", "Jonatan Hernandez Chan",
-            "Fernando Enrique Morales Caña", "Juan Jose Cordova Magaña", "Rodolfo Olan Avalos",
-            "Medel Alamilla Pablo", "Juan Carlos Hernandez Hernandez", "Estuardo Alfonso Lutzow Dominguez",
-            "Juan Hernandez Magaña", "Geovani Magaña Jimenez", "Algemiro Leon Santos",
-            "Francisco Javier Coj Damian", "Andy Bravata Oyosa", "Luis Arturo Denis Notario",
-            "Ivan Segura Hernandez", "Inocente Perez Cordova"
-        ]
-        
-        print("Poblando operadores...")
-        count = 0
-        for nombre_op in lista_operadores:
-            if not Operador.query.filter_by(nombre=nombre_op).first():
-                operador = Operador(nombre=nombre_op)
-                db.session.add(operador)
-                count += 1
-        
-        db.session.commit()
-        print(f"¡Listo! Se agregaron {count} nuevos operadores.")
-
+# EL COMANDO 'seed-operators' HA SIDO ELIMINADO.
+# La gestión de operadores ahora se realiza a través de la interfaz web en /catalog/operators
 
 @app.cli.command("create-user")
 @click.argument("username")

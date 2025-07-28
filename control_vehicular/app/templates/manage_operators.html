@@ -1,0 +1,66 @@
+{% extends "base_admin.html" %} {% block title %}Gestionar Operadores{% endblock
+%} {% block content %}
+<div class="bg-white p-6 rounded-lg shadow-md">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-semibold">Gestionar Operadores</h1>
+    <a
+      href="{{ url_for('catalog.add_operator') }}"
+      class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+    >
+      Añadir Operador
+    </a>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="w-1/4 py-3 px-4 uppercase font-semibold text-sm text-left">
+            ID
+          </th>
+          <th class="w-1/2 py-3 px-4 uppercase font-semibold text-sm text-left">
+            Nombre del Operador
+          </th>
+          <th class="py-3 px-4 uppercase font-semibold text-sm text-center">
+            Acciones
+          </th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for operator in operators %}
+        <tr class="border-b hover:bg-gray-50">
+          <td class="py-3 px-4">{{ operator.id }}</td>
+          <td class="py-3 px-4">{{ operator.nombre }}</td>
+          <td class="py-3 px-4 text-center">
+            <a
+              href="{{ url_for('catalog.edit_operator', operator_id=operator.id) }}"
+              class="text-yellow-600 hover:text-yellow-900 mx-2 font-medium"
+              >Editar</a
+            >
+            <form
+              action="{{ url_for('catalog.delete_operator', operator_id=operator.id) }}"
+              method="post"
+              class="inline-block"
+              onsubmit="return confirm('¿Estás seguro de que quieres eliminar a \'{{ operator.nombre }}\'? Esta acción no se puede deshacer.');"
+            >
+              <button
+                type="submit"
+                class="text-red-600 hover:text-red-900 mx-2 font-medium"
+              >
+                Eliminar
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" class="text-center py-4 text-gray-500">
+            No hay operadores registrados.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

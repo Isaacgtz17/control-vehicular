@@ -1,0 +1,44 @@
+{% extends "base_admin.html" %} {% block title %}Catálogo del Sistema{% endblock
+%} {% block content %}
+<div class="bg-white p-6 rounded-lg shadow-md">
+  <h1 class="text-3xl font-semibold mb-6 border-b pb-4">
+    Catálogo del Sistema
+  </h1>
+  <p class="text-gray-600 mb-8">
+    Desde aquí puedes gestionar las entidades principales del sistema, como los
+    operadores y los vehículos.
+  </p>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Tarjeta para Gestionar Operadores -->
+    <div class="bg-gray-50 p-6 rounded-lg border border-gray-200">
+      <h2 class="text-xl font-bold mb-2">Operadores</h2>
+      <p class="text-gray-600 mb-4">
+        Añade, edita o elimina a los conductores que pueden ser asignados a las
+        salidas de los vehículos.
+      </p>
+      <a
+        href="{{ url_for('catalog.manage_operators') }}"
+        class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+      >
+        Gestionar Operadores
+      </a>
+    </div>
+
+    <!-- Tarjeta para Gestionar Vehículos -->
+    <div class="bg-gray-50 p-6 rounded-lg border border-gray-200">
+      <h2 class="text-xl font-bold mb-2">Vehículos</h2>
+      <p class="text-gray-600 mb-4">
+        Consulta la flota completa, registra nuevas unidades, edita sus datos y
+        genera sus códigos QR.
+      </p>
+      <a
+        href="{{ url_for('main.index') }}"
+        class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+      >
+        Gestionar Flota
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

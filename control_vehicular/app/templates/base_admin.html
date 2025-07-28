@@ -10,9 +10,20 @@
     <nav class="bg-slate-800 text-white p-4">
       <div class="container mx-auto flex justify-between items-center">
         <a href="{{ url_for('main.index') }}" class="text-xl font-bold"
-          >Panel de Administrador</a
+          >Control Vehicular</a
         >
         <div>
+          <a
+            href="{{ url_for('main.index') }}"
+            class="px-3 py-2 rounded-md hover:bg-slate-700"
+            >Dashboard</a
+          >
+          <!-- NUEVO ENLACE AL CATÁLOGO -->
+          <a
+            href="{{ url_for('catalog.index') }}"
+            class="px-3 py-2 rounded-md hover:bg-slate-700"
+            >Catálogo</a
+          >
           <a
             href="{{ url_for('main.manage_users') }}"
             class="px-3 py-2 rounded-md hover:bg-slate-700"
@@ -55,17 +66,14 @@
       {% endif %} {% endwith %} {% block content %}{% endblock %}
     </div>
 
-    <!-- SCRIPT PARA ACTUALIZACIÓN EN TIEMPO REAL -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-
-    <!-- --- CORRECCIÓN IMPORTANTE AQUÍ --- -->
-    <!-- Este bloque ahora solo establece la conexión. Las páginas hijas añadirán la lógica. -->
     {% block scripts %}
     <script type="text/javascript">
       document.addEventListener("DOMContentLoaded", (event) => {
         const socket = io.connect(
           location.protocol + "//" + document.domain + ":" + location.port
         );
+
         socket.on("connect", function () {
           console.log("Conectado al servidor en tiempo real.");
         });
