@@ -10,45 +10,41 @@
       type="text/javascript"
     ></script>
     <style>
+      .hidden {
+        display: none;
+      }
       #reader {
         width: 100%;
         max-width: 500px;
         margin: auto;
-        border: 2px solid #333;
+        border: 2px solid #4a5568;
         border-radius: 8px;
       }
-      #video-preview-container {
-        position: relative;
-        width: 100%;
-        max-width: 500px;
-        margin: auto;
-      }
-      #video-preview {
-        width: 100%;
-        border-radius: 8px;
-      }
-      #overlay {
-        position: absolute;
+      .camera-view {
+        position: fixed;
         top: 0;
         left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
+        width: 100%;
+        height: 100%;
+        background: black;
+        z-index: 100;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        font-size: 1.5rem;
-        text-align: center;
-        border-radius: 8px;
+      }
+      .camera-view video {
+        width: 100%;
+        max-width: 600px;
       }
     </style>
   </head>
   <body
     class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4"
   >
-    <div class="w-full max-w-lg text-center">
-      <h1 class="text-3xl font-bold mb-4">Escaner de Acceso</h1>
+    <!-- Vista Principal -->
+    <div id="main-view" class="w-full max-w-lg text-center">
+      <h1 id="main-title" class="text-3xl font-bold mb-4">Escaner de Acceso</h1>
       <p id="instruction-text" class="mb-6">
         Apunte la cámara al código QR de la unidad.
       </p>
@@ -57,44 +53,18 @@
         <div id="reader"></div>
       </div>
 
-      <!-- Contenedor para la selección de conductor, inicialmente oculto -->
-      <div id="conductor-selector-container" class="hidden mb-4">
-        <label for="conductor-select" class="block mb-2 font-bold"
-          >Seleccione Conductor para la Salida:</label
-        >
-        <select
-          id="conductor-select"
-          class="w-full p-2 rounded bg-gray-800 text-white border border-gray-600"
-        >
-          <!-- Opciones se llenarán dinámicamente -->
-        </select>
+      <div id="salida-form-container" class="hidden mb-4 text-left">
+        <!-- Conductor, se llenará dinámicamente -->
       </div>
 
-      <div id="video-preview-container" class="hidden mb-4">
-        <video id="video-preview" autoplay playsinline></video>
-        <div id="overlay" class="hidden"></div>
-      </div>
-
-      <div id="controls" class="w-full">
-        <button
-          id="capture-btn"
-          class="hidden w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg mb-2"
-        >
-          Tomar Foto y Registrar
-        </button>
-        <button
-          id="rescan-btn"
-          class="hidden w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-lg"
-        >
-          Escanear de Nuevo
-        </button>
+      <div id="checklist-container" class="hidden w-full text-left">
+        <!-- El checklist se renderizará aquí -->
       </div>
 
       <div
         id="result"
-        class="mt-6 p-4 rounded-lg w-full max-w-lg text-center"
+        class="mt-6 p-4 rounded-lg w-full max-w-lg text-center font-bold"
       ></div>
-
       <a
         href="{{ url_for('main.index') }}"
         class="mt-8 inline-block text-blue-400 hover:text-blue-300"
@@ -102,215 +72,289 @@
       >
     </div>
 
+    <!-- Vista de Cámara para Fallas -->
+    <div id="camera-modal" class="camera-view hidden">
+      <video id="camera-preview" autoplay playsinline></video>
+      <button
+        id="capture-failure-btn"
+        class="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-full text-lg"
+      >
+        Capturar Falla
+      </button>
+      <button
+        id="cancel-capture-btn"
+        class="mt-2 text-gray-400 hover:text-white"
+      >
+        Cancelar
+      </button>
+    </div>
+
     <script>
+      // --- STATE MANAGEMENT ---
       let html5QrCode;
       let isProcessing = false;
       let currentQrId = null;
       let currentAction = null;
+      let checklistData = {};
+      let currentChecklistItem = null;
 
-      const readerElement = document.getElementById("reader");
-      const resultElement = document.getElementById("result");
-      const videoPreviewContainer = document.getElementById(
-        "video-preview-container"
-      );
-      const videoPreview = document.getElementById("video-preview");
-      const overlay = document.getElementById("overlay");
-      const captureBtn = document.getElementById("capture-btn");
-      const rescanBtn = document.getElementById("rescan-btn");
-      const readerContainer = document.getElementById("reader-container");
-      const conductorSelectorContainer = document.getElementById(
-        "conductor-selector-container"
-      );
-      const conductorSelect = document.getElementById("conductor-select");
+      const CHECKLIST_ITEMS = [
+        { key: "llantas", label: "Condición de Llantas" },
+        { key: "luces", label: "Sistema de Luces" },
+        { key: "niveles", label: "Niveles (Aceite, Agua)" },
+        { key: "carroceria", label: "Carrocería y Espejos" },
+      ];
+
+      // --- DOM ELEMENTS ---
+      const mainView = document.getElementById("main-view");
+      const mainTitle = document.getElementById("main-title");
       const instructionText = document.getElementById("instruction-text");
+      const readerContainer = document.getElementById("reader-container");
+      const salidaFormContainer = document.getElementById(
+        "salida-form-container"
+      );
+      const checklistContainer = document.getElementById("checklist-container");
+      const resultElement = document.getElementById("result");
+      const cameraModal = document.getElementById("camera-modal");
+      const cameraPreview = document.getElementById("camera-preview");
+      const captureFailureBtn = document.getElementById("capture-failure-btn");
+      const cancelCaptureBtn = document.getElementById("cancel-capture-btn");
 
+      // --- UI FUNCTIONS ---
       function showMessage(message, isError = false) {
         resultElement.textContent = message;
         resultElement.className = `mt-6 p-4 rounded-lg w-full max-w-lg text-center font-bold ${
           isError ? "bg-red-500" : "bg-green-500"
         }`;
-        // El mensaje se quedará visible hasta la redirección o el reseteo
       }
 
+      function renderSalidaForm(operadores) {
+        salidaFormContainer.innerHTML = `
+            <div class="mb-4">
+                <label for="conductor-select" class="block mb-2 font-bold">Seleccione Conductor:</label>
+                <select id="conductor-select" class="w-full p-2 rounded bg-gray-800 text-white border border-gray-600">
+                    <option value="">-- Seleccionar --</option>
+                    ${operadores
+                      .map(
+                        (op) =>
+                          `<option value="${op.nombre}">${op.nombre}</option>`
+                      )
+                      .join("")}
+                </select>
+            </div>
+            <button id="start-checklist-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Iniciar Inspección de Salida</button>
+        `;
+        salidaFormContainer.classList.remove("hidden");
+        document
+          .getElementById("start-checklist-btn")
+          .addEventListener("click", startChecklist);
+      }
+
+      function renderChecklistItem(itemIndex) {
+        if (itemIndex >= CHECKLIST_ITEMS.length) {
+          renderChecklistSummary();
+          return;
+        }
+        const item = CHECKLIST_ITEMS[itemIndex];
+        currentChecklistItem = item.key;
+        mainTitle.textContent = `Inspección: ${item.label}`;
+        instructionText.textContent = `Paso ${itemIndex + 1} de ${
+          CHECKLIST_ITEMS.length
+        }`;
+
+        checklistContainer.innerHTML = `
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <p class="text-lg mb-4">¿El estado de "${
+                  item.label
+                }" es correcto?</p>
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="recordChecklist('${item.key}', 'ok', ${
+          itemIndex + 1
+        })" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">OK</button>
+                    <button onclick="recordChecklist('${item.key}', 'falla', ${
+          itemIndex + 1
+        })" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg">Con Falla</button>
+                </div>
+                <div id="falla-details-${item.key}" class="hidden mt-4">
+                    <label for="obs-${
+                      item.key
+                    }" class="block mb-2 font-bold">Describa la falla:</label>
+                    <textarea id="obs-${
+                      item.key
+                    }" rows="2" class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"></textarea>
+                    <button onclick="openFailureCamera()" class="w-full mt-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg">Tomar Foto de Evidencia</button>
+                    <p id="foto-status-${
+                      item.key
+                    }" class="text-green-400 mt-2 hidden">✓ Foto guardada</p>
+                    <button onclick="renderChecklistItem(${
+                      itemIndex + 1
+                    })" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Siguiente</button>
+                </div>
+            </div>
+        `;
+      }
+
+      function renderChecklistSummary() {
+        mainTitle.textContent = "Finalizar Inspección";
+        instructionText.textContent =
+          "Añada observaciones generales si es necesario.";
+        checklistContainer.innerHTML = `
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <label for="obs-generales" class="block mb-2 font-bold">Observaciones Generales (Opcional):</label>
+                <textarea id="obs-generales" rows="3" class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"></textarea>
+                <button onclick="submitSalida()" class="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-4 rounded-lg text-lg">REGISTRAR SALIDA</button>
+            </div>
+        `;
+      }
+
+      // --- LOGIC FUNCTIONS ---
       function onScanSuccess(decodedText, decodedResult) {
         if (isProcessing) return;
         isProcessing = true;
         currentQrId = decodedText;
+        html5QrCode.stop();
+        readerContainer.classList.add("hidden");
 
-        html5QrCode
-          .stop()
-          .then(() => {
-            readerContainer.classList.add("hidden");
-            // Llama a la nueva API para preparar el escaneo
-            fetch(`/api/prepare_scan/${currentQrId}`)
-              .then((response) => response.json())
-              .then((data) => {
-                if (data.status !== "ok") {
-                  showMessage(data.message, true);
-                  setTimeout(resetScanner, 2000);
-                  return;
-                }
-
-                currentAction = data.action;
-                instructionText.textContent = `Vehículo: ${
-                  data.vehiculo.numero_economico
-                }. Acción: ${data.action.toUpperCase()}`;
-
-                // Si es una salida, muestra el selector de conductor
-                if (data.action === "salida") {
-                  conductorSelect.innerHTML =
-                    '<option value="">-- Seleccionar --</option>';
-                  data.operadores.forEach((op) => {
-                    const option = new Option(op.nombre, op.nombre);
-                    conductorSelect.add(option);
-                  });
-                  conductorSelectorContainer.classList.remove("hidden");
-                }
-
-                // Inicia la cámara para la foto
-                startCameraPreview();
-              })
-              .catch((err) => {
-                showMessage("Error de red al preparar el escaneo.", true);
-                resetScanner();
-              });
-          })
-          .catch((err) => {
-            console.error("Failed to stop QR scanner.", err);
-            isProcessing = false;
+        fetch(`/api/prepare_scan/${currentQrId}`)
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.status !== "ok") {
+              showMessage(data.message, true);
+              setTimeout(() => window.location.reload(), 2000);
+              return;
+            }
+            currentAction = data.action;
+            instructionText.textContent = `Vehículo: ${data.vehiculo.numero_economico}`;
+            if (data.action === "salida") {
+              mainTitle.textContent = "Registro de Salida";
+              renderSalidaForm(data.operadores);
+            } else {
+              // Lógica para entrada (simplificada por ahora)
+              submitEntrada();
+            }
           });
       }
 
-      function startCameraPreview() {
-        videoPreviewContainer.classList.remove("hidden");
-        captureBtn.classList.remove("hidden");
-        rescanBtn.classList.remove("hidden");
-
-        navigator.mediaDevices
-          .getUserMedia({ video: { facingMode: "environment" } })
-          .then((stream) => {
-            videoPreview.srcObject = stream;
-            captureBtn.onclick = () => captureAndSend(stream);
-          })
-          .catch((err) => {
-            console.error("Error accessing camera for preview: ", err);
-            showMessage("Error al iniciar la cámara de vista previa.", true);
-            resetScanner();
-          });
-      }
-
-      function captureAndSend(stream) {
-        // Validar que se haya seleccionado un conductor si es una salida
-        if (currentAction === "salida" && !conductorSelect.value) {
+      function startChecklist() {
+        const conductor = document.getElementById("conductor-select").value;
+        if (!conductor) {
           showMessage("Debe seleccionar un conductor.", true);
           return;
         }
+        checklistData.conductor_asignado = conductor;
+        salidaFormContainer.classList.add("hidden");
+        checklistContainer.classList.remove("hidden");
+        renderChecklistItem(0);
+      }
 
-        captureBtn.disabled = true;
-        captureBtn.textContent = "Procesando...";
+      window.recordChecklist = (key, estado, nextIndex) => {
+        checklistData[key] = { estado: estado };
+        if (estado === "ok") {
+          renderChecklistItem(nextIndex);
+        } else {
+          document
+            .getElementById(`falla-details-${key}`)
+            .classList.remove("hidden");
+        }
+      };
 
+      window.openFailureCamera = () => {
+        cameraModal.classList.remove("hidden");
+        navigator.mediaDevices
+          .getUserMedia({ video: { facingMode: "environment" } })
+          .then((stream) => {
+            cameraPreview.srcObject = stream;
+          });
+      };
+
+      captureFailureBtn.onclick = () => {
         const canvas = document.createElement("canvas");
-        canvas.width = videoPreview.videoWidth;
-        canvas.height = videoPreview.videoHeight;
-        const context = canvas.getContext("2d");
-        context.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
-        const photoDataUrl = canvas.toDataURL("image/jpeg");
+        canvas.width = cameraPreview.videoWidth;
+        canvas.height = cameraPreview.videoHeight;
+        canvas.getContext("2d").drawImage(cameraPreview, 0, 0);
+        const dataUrl = canvas.toDataURL("image/jpeg");
 
-        stream.getTracks().forEach((track) => track.stop());
+        checklistData[currentChecklistItem].foto = dataUrl;
+        checklistData[currentChecklistItem].obs = document.getElementById(
+          `obs-${currentChecklistItem}`
+        ).value;
 
-        videoPreview.srcObject = null;
-        videoPreview.poster = photoDataUrl;
-        overlay.textContent = "REGISTRANDO...";
-        overlay.classList.remove("hidden");
+        cameraPreview.srcObject.getTracks().forEach((track) => track.stop());
+        cameraModal.classList.add("hidden");
+        document
+          .getElementById(`foto-status-${currentChecklistItem}`)
+          .classList.remove("hidden");
+      };
 
+      cancelCaptureBtn.onclick = () => {
+        cameraPreview.srcObject.getTracks().forEach((track) => track.stop());
+        cameraModal.classList.add("hidden");
+      };
+
+      function submitSalida() {
+        checklistData.generales =
+          document.getElementById("obs-generales").value;
         const payload = {
           qr_id: currentQrId,
-          photo: photoDataUrl,
-          conductor_asignado:
-            currentAction === "salida" ? conductorSelect.value : null,
+          conductor_asignado: checklistData.conductor_asignado,
+          checklist: {
+            llantas: checklistData.llantas,
+            luces: checklistData.luces,
+            niveles: checklistData.niveles,
+            carroceria: checklistData.carroceria,
+            generales: checklistData.generales,
+          },
         };
 
+        mainView.innerHTML =
+          '<p class="text-2xl font-bold">Registrando, por favor espere...</p>';
         fetch("/verificar_qr", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         })
-          .then((response) => response.json())
+          .then((res) => res.json())
           .then((data) => {
             showMessage(data.message, data.status !== "autorizado");
-
-            // *** NUEVA LÓGICA DE REDIRECCIÓN ***
-            if (data.status === "autorizado") {
-              // Si el registro es exitoso, redirige al dashboard principal después de 2 segundos.
-              setTimeout(() => {
-                window.location.href = "{{ url_for('main.index') }}";
-              }, 2000);
-            } else {
-              // Si hay un error, resetea el escáner para poder intentarlo de nuevo.
-              setTimeout(resetScanner, 2000);
-            }
-          })
-          .catch((error) => {
-            console.error("Error:", error);
-            showMessage("Error de conexión con el servidor.", true);
-            setTimeout(resetScanner, 2000);
+            setTimeout(
+              () => (window.location.href = "{{ url_for('main.index') }}"),
+              2000
+            );
           });
       }
 
-      function onScanFailure(error) {
-        // Silencioso para no molestar al usuario
+      function submitEntrada() {
+        mainView.innerHTML =
+          '<p class="text-2xl font-bold">Registrando Entrada...</p>';
+        fetch("/verificar_qr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ qr_id: currentQrId }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            showMessage(data.message, data.status !== "autorizado");
+            setTimeout(
+              () => (window.location.href = "{{ url_for('main.index') }}"),
+              2000
+            );
+          });
       }
 
-      function startScanner() {
+      // --- INITIALIZATION ---
+      document.addEventListener("DOMContentLoaded", () => {
         html5QrCode = new Html5Qrcode("reader");
         html5QrCode
           .start(
             { facingMode: "environment" },
             { fps: 10, qrbox: { width: 250, height: 250 } },
             onScanSuccess,
-            onScanFailure
+            (error) => {
+              /* Silencioso */
+            }
           )
-          .catch((err) => {
-            showMessage(
-              "No se pudo iniciar el escáner. Verifique los permisos de la cámara.",
-              true
-            );
-          });
-      }
-
-      function resetScanner() {
-        isProcessing = false;
-        currentQrId = null;
-        currentAction = null;
-
-        if (videoPreview.srcObject) {
-          videoPreview.srcObject.getTracks().forEach((track) => track.stop());
-        }
-
-        videoPreviewContainer.classList.add("hidden");
-        conductorSelectorContainer.classList.add("hidden");
-        captureBtn.classList.add("hidden");
-        rescanBtn.classList.add("hidden");
-        overlay.classList.add("hidden");
-        readerContainer.classList.remove("hidden");
-
-        resultElement.textContent = "";
-        resultElement.className =
-          "mt-6 p-4 rounded-lg w-full max-w-lg text-center";
-
-        videoPreview.srcObject = null;
-        videoPreview.poster = "";
-        captureBtn.disabled = false;
-        captureBtn.textContent = "Tomar Foto y Registrar";
-        instructionText.textContent =
-          "Apunte la cámara al código QR de la unidad.";
-
-        startScanner();
-      }
-
-      rescanBtn.addEventListener("click", resetScanner);
-
-      document.addEventListener("DOMContentLoaded", startScanner);
+          .catch((err) => showMessage("No se pudo iniciar el escáner.", true));
+      });
     </script>
   </body>
 </html>

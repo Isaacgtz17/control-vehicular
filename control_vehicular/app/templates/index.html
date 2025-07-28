@@ -55,7 +55,7 @@
       <input
         type="text"
         name="conductor"
-        placeholder="Operador Asignado por Defecto"
+        placeholder="Operador Asignado"
         required
         class="p-2 border rounded w-full"
       />
@@ -100,9 +100,8 @@
           <th class="p-2 border">Fecha y Hora</th>
           <th class="p-2 border">Tipo</th>
           <th class="p-2 border">Placa</th>
-          <th class="p-2 border">No. Económico</th>
-          <!-- NUEVA COLUMNA -->
-          <th class="p-2 border">Conductor del Viaje</th>
+          <th class="p-2 border">Modelo</th>
+          <th class="p-2 border">Conductor</th>
           <th class="p-2 border">Foto</th>
         </tr>
       </thead>
@@ -119,10 +118,9 @@
             >{% endif %}
           </td>
           <td class="p-2 border">{{ registro.vehiculo.placa }}</td>
-          <td class="p-2 border">{{ registro.vehiculo.numero_economico }}</td>
-          <!-- MOSTRAR CONDUCTOR ASIGNADO -->
-          <td class="p-2 border font-medium">
-            {{ registro.conductor_asignado or 'N/A' }}
+          <td class="p-2 border">{{ registro.vehiculo.modelo }}</td>
+          <td class="p-2 border">
+            {{ registro.conductor_asignado or registro.vehiculo.conductor }}
           </td>
           <td class="p-2 border">
             {% if registro.photo_filename %}
@@ -147,12 +145,12 @@
     {% if registros.has_prev %}<a
       href="{{ url_for('main.index', page_registros=registros.prev_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
       class="px-3 py-1 bg-gray-200 rounded"
-      ><< Anterior</a
+      >&lt;&lt; Anterior</a
     >{% endif %} Página {{ registros.page }} de {{ registros.pages }}. {% if
     registros.has_next %}<a
       href="{{ url_for('main.index', page_registros=registros.next_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
       class="px-3 py-1 bg-gray-200 rounded"
-      >Siguiente ></a
+      >Siguiente &gt;</a
     >{% endif %}
   </div>
 </div>
@@ -208,9 +206,7 @@
           {% endif %}
         </div>
         <p>{{ vehiculo.modelo }}</p>
-        <p class="text-sm text-gray-600 mb-2">
-          Default: {{ vehiculo.conductor }}
-        </p>
+        <p class="text-sm text-gray-600 mb-2">{{ vehiculo.conductor }}</p>
         <img
           src="data:image/png;base64,{{ vehiculo.qr_code_b64 }}"
           alt="QR"
@@ -308,12 +304,12 @@
     {% if vehiculos.has_prev %}<a
       href="{{ url_for('main.index', page_vehiculos=vehiculos.prev_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
       class="px-3 py-1 bg-gray-200 rounded"
-      ><< Anterior</a
+      >&lt;&lt; Anterior</a
     >{% endif %} Página {{ vehiculos.page }} de {{ vehiculos.pages }}. {% if
     vehiculos.has_next %}<a
       href="{{ url_for('main.index', page_vehiculos=vehiculos.next_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
       class="px-3 py-1 bg-gray-200 rounded"
-      >Siguiente ></a
+      >Siguiente &gt;</a
     >{% endif %}
   </div>
 </div>
@@ -324,7 +320,7 @@
   class="fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full hidden z-50 flex items-center justify-center p-4"
 >
   <div
-    class="relative p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white"
+    class="relative p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white"
   >
     <div class="flex justify-between items-center pb-3 border-b">
       <h3 class="text-xl leading-6 font-medium text-gray-900" id="modalTitle">
@@ -334,7 +330,7 @@
         &times;
       </button>
     </div>
-    <div id="modalContent" class="mt-4 max-h-96 overflow-y-auto">
+    <div id="modalContent" class="mt-4 max-h-[70vh] overflow-y-auto">
       <p>Cargando...</p>
     </div>
   </div>
@@ -353,8 +349,7 @@
     const closeModal = () => modal.classList.add("hidden");
 
     vehicleCards.forEach((card) => {
-      const clickableArea = card.querySelector(".flex-grow");
-      clickableArea.addEventListener("click", function (event) {
+      card.querySelector(".flex-grow").addEventListener("click", function () {
         const vehiculoId = card.dataset.vehiculoId;
         modalContent.innerHTML = "<p>Cargando historial...</p>";
         openModal();
@@ -363,33 +358,79 @@
           .then((response) => response.json())
           .then((data) => {
             modalTitle.textContent = `Historial de: ${data.numero_economico} (${data.placa})`;
-            let contentHtml = `<p class="mb-2"><strong>Modelo:</strong> ${data.modelo}</p><p class="mb-4"><strong>Operador Default:</strong> ${data.conductor}</p>`;
+            let contentHtml = `<p class="mb-4"><strong>Operador Default:</strong> ${data.conductor}</p>`;
+
             if (data.historial.length > 0) {
-              contentHtml +=
-                '<table class="w-full text-left border-collapse"><thead><tr class="bg-gray-200"><th class="p-2 border">Fecha y Hora</th><th class="p-2 border">Tipo</th><th class="p-2 border">Conductor del Viaje</th><th class="p-2 border">Foto</th></tr></thead><tbody>';
-              data.historial.forEach((registro) => {
-                const tipoClass =
-                  registro.tipo === "Entrada"
-                    ? "text-green-600"
-                    : "text-red-600";
-                let photoHtml = "";
-                if (registro.photo_filename) {
-                  photoHtml = `<a href="/static/capturas/${registro.photo_filename}" target="_blank"><img src="/static/capturas/${registro.photo_filename}" class="h-12 w-16 object-cover rounded-md"></a>`;
-                }
-                const conductorAsignado = registro.conductor_asignado || "N/A";
-                contentHtml += `<tr class="hover:bg-gray-50"><td class="p-2 border">${registro.timestamp}</td><td class="p-2 border font-bold ${tipoClass}">${registro.tipo}</td><td class="p-2 border font-medium">${conductorAsignado}</td><td class="p-2 border">${photoHtml}</td></tr>`;
-              });
-              contentHtml += "</tbody></table>";
+              contentHtml += data.historial
+                .map((registro) => {
+                  const tipoClass =
+                    registro.tipo === "Entrada"
+                      ? "bg-green-100 text-green-800"
+                      : "bg-red-100 text-red-800";
+                  let checklistHtml = '<p class="text-gray-500">No aplica</p>';
+
+                  if (registro.checklist) {
+                    const items = ["llantas", "luces", "niveles", "carroceria"];
+                    checklistHtml = items
+                      .map((itemKey) => {
+                        const item = registro.checklist[itemKey];
+                        const estadoClass =
+                          item.estado === "ok"
+                            ? "text-green-600"
+                            : "text-red-600 font-bold";
+                        let fallaHtml = "";
+                        if (item.estado === "falla") {
+                          fallaHtml = `<div class="ml-4 mt-1 text-sm text-gray-700">
+                                            <p><strong>Obs:</strong> ${
+                                              item.obs || "N/A"
+                                            }</p>
+                                            ${
+                                              item.foto
+                                                ? `<a href="/static/capturas/${item.foto}" target="_blank" class="text-blue-500 hover:underline">Ver Foto</a>`
+                                                : ""
+                                            }
+                                        </div>`;
+                        }
+                        return `<div class="py-1"><span class="capitalize">${itemKey}:</span> <span class="${estadoClass}">${item.estado.toUpperCase()}</span>${fallaHtml}</div>`;
+                      })
+                      .join("");
+                    if (registro.checklist.generales) {
+                      checklistHtml += `<div class="mt-2 pt-2 border-t"><strong>Obs. Generales:</strong> ${registro.checklist.generales}</div>`;
+                    }
+                  }
+
+                  return `
+                                <div class="border rounded-lg mb-4 overflow-hidden">
+                                    <div class="p-3 ${tipoClass} flex justify-between items-center">
+                                        <h4 class="font-bold text-lg">${
+                                          registro.tipo
+                                        }</h4>
+                                        <span class="text-sm">${
+                                          registro.timestamp
+                                        }</span>
+                                    </div>
+                                    <div class="p-3 grid grid-cols-1 md:grid-cols-3 gap-4 bg-white">
+                                        <div>
+                                            <p class="font-bold">Conductor Asignado</p>
+                                            <p>${
+                                              registro.conductor_asignado ||
+                                              "N/A"
+                                            }</p>
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <p class="font-bold">Resultado de Inspección</p>
+                                            ${checklistHtml}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                })
+                .join("");
             } else {
               contentHtml +=
                 '<p class="text-center text-gray-500 mt-4">No hay registros de acceso para esta unidad.</p>';
             }
             modalContent.innerHTML = contentHtml;
-          })
-          .catch((error) => {
-            console.error("Error al cargar el historial:", error);
-            modalContent.innerHTML =
-              '<p class="text-red-500">No se pudo cargar el historial.</p>';
           });
       });
     });
@@ -406,18 +447,6 @@
     );
 
     socket.on("update_dashboard", function (data) {
-      console.log("Actualización dinámica recibida:", data);
-
-      const enPatioEl = document.getElementById("unidades-en-patio");
-      const enRutaEl = document.getElementById("unidades-en-ruta");
-      const mantenimientoEl = document.getElementById("unidades-mantenimiento");
-
-      if (enPatioEl && enRutaEl && mantenimientoEl) {
-        enPatioEl.textContent = data.fleet_status.en_patio;
-        enRutaEl.textContent = data.fleet_status.en_ruta;
-        mantenimientoEl.textContent = data.fleet_status.mantenimiento;
-      }
-
       if (data.new_log) {
         const tableBody = document.getElementById("bitacora-tbody");
         if (tableBody) {
@@ -435,11 +464,20 @@
                     <td class="p-2 border"><span class="${tipoClass} font-bold">${data.new_log.tipo}</span></td>
                     <td class="p-2 border">${data.new_log.placa}</td>
                     <td class="p-2 border">${data.new_log.modelo}</td>
-                    <td class="p-2 border font-medium">${conductorAsignado}</td>
+                    <td class="p-2 border">${conductorAsignado}</td>
                     <td class="p-2 border">${photoHtml}</td>
                 `;
           tableBody.prepend(newRow);
         }
+      }
+
+      if (data.fleet_status) {
+        document.getElementById("unidades-en-patio").textContent =
+          data.fleet_status.en_patio;
+        document.getElementById("unidades-en-ruta").textContent =
+          data.fleet_status.en_ruta;
+        document.getElementById("unidades-mantenimiento").textContent =
+          data.fleet_status.mantenimiento;
       }
 
       if (data.vehicle_update) {
@@ -462,24 +500,6 @@
           statusContainer.innerHTML = statusHtml;
         }
       }
-    });
-
-    document.querySelectorAll(".maintenance-toggler").forEach((button) => {
-      button.addEventListener("click", function () {
-        const vehiculoId = this.dataset.vehiculoId;
-        fetch(`/vehiculo/toggle_maintenance/${vehiculoId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            if (data.status !== "success") {
-              alert("Error al cambiar el estado.");
-            }
-            console.log(data.message);
-          })
-          .catch((error) => console.error("Error:", error));
-      });
     });
   });
 </script>

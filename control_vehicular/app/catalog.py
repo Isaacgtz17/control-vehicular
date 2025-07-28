@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required
 from .models import Operador
 from . import db
-from .routes import admin_required, log_action
+from .utils import admin_required, log_action
 
 catalog_bp = Blueprint('catalog', __name__, url_prefix='/catalog')
 
@@ -11,16 +11,12 @@ catalog_bp = Blueprint('catalog', __name__, url_prefix='/catalog')
 @login_required
 @admin_required
 def index():
-    """Página principal del catálogo."""
     return render_template('catalog_index.html')
-
-# --- Rutas para la Gestión de Operadores ---
 
 @catalog_bp.route('/operators')
 @login_required
 @admin_required
 def manage_operators():
-    """Muestra la lista de todos los operadores."""
     operators = Operador.query.order_by(Operador.nombre).all()
     return render_template('manage_operators.html', operators=operators)
 
@@ -28,7 +24,6 @@ def manage_operators():
 @login_required
 @admin_required
 def add_operator():
-    """Muestra el formulario para añadir un nuevo operador y procesa el envío."""
     if request.method == 'POST':
         nombre = request.form.get('nombre')
         if not nombre:
@@ -48,7 +43,6 @@ def add_operator():
 @login_required
 @admin_required
 def edit_operator(operator_id):
-    """Muestra el formulario para editar un operador y procesa el envío."""
     operator = Operador.query.get_or_404(operator_id)
     if request.method == 'POST':
         nuevo_nombre = request.form.get('nombre')
@@ -69,7 +63,6 @@ def edit_operator(operator_id):
 @login_required
 @admin_required
 def delete_operator(operator_id):
-    """Elimina un operador de la base de datos."""
     operator = Operador.query.get_or_404(operator_id)
     nombre_eliminado = operator.nombre
     db.session.delete(operator)
