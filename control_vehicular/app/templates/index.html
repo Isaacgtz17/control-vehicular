@@ -1,7 +1,7 @@
-{% extends "base_admin.html" %} {% block title %}Dashboard Principal{% endblock
+{% extends "base_admin.html" %} {% block title %} Dashboard Principal{% endblock
 %} {% block content %}
 <!-- SECCIÓN DE ESTADO DE FLOTA -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
   <div class="bg-white p-6 rounded-lg shadow-md text-center">
     <h3 class="text-lg font-semibold text-gray-500">Unidades en Patio</h3>
     <p id="unidades-en-patio" class="text-5xl font-bold text-green-600">
@@ -15,12 +15,18 @@
     </p>
   </div>
   <div class="bg-white p-6 rounded-lg shadow-md text-center">
+    <h3 class="text-lg font-semibold text-gray-500">En Mantenimiento</h3>
+    <p id="unidades-mantenimiento" class="text-5xl font-bold text-red-600">
+      {{ unidades_mantenimiento }}
+    </p>
+  </div>
+  <div class="bg-white p-6 rounded-lg shadow-md text-center">
     <h3 class="text-lg font-semibold text-gray-500">Total de Unidades</h3>
     <p class="text-5xl font-bold text-slate-700">{{ total_unidades }}</p>
   </div>
 </div>
 
-<!-- SECCIÓN DE REGISTRO ACTUALIZADA -->
+<!-- SECCIÓN DE REGISTRO -->
 <div class="bg-white p-6 rounded-lg shadow-md mb-8">
   <h2 class="text-2xl font-semibold mb-4">Registrar Nueva Unidad</h2>
   <form action="{{ url_for('main.registrar_vehiculo') }}" method="post">
@@ -49,7 +55,7 @@
       <input
         type="text"
         name="conductor"
-        placeholder="Operador Asignado"
+        placeholder="Operador Asignado por Defecto"
         required
         class="p-2 border rounded w-full"
       />
@@ -94,8 +100,9 @@
           <th class="p-2 border">Fecha y Hora</th>
           <th class="p-2 border">Tipo</th>
           <th class="p-2 border">Placa</th>
-          <th class="p-2 border">Modelo</th>
-          <th class="p-2 border">Conductor</th>
+          <th class="p-2 border">No. Económico</th>
+          <!-- NUEVA COLUMNA -->
+          <th class="p-2 border">Conductor del Viaje</th>
           <th class="p-2 border">Foto</th>
         </tr>
       </thead>
@@ -112,8 +119,11 @@
             >{% endif %}
           </td>
           <td class="p-2 border">{{ registro.vehiculo.placa }}</td>
-          <td class="p-2 border">{{ registro.vehiculo.modelo }}</td>
-          <td class="p-2 border">{{ registro.vehiculo.conductor }}</td>
+          <td class="p-2 border">{{ registro.vehiculo.numero_economico }}</td>
+          <!-- MOSTRAR CONDUCTOR ASIGNADO -->
+          <td class="p-2 border font-medium">
+            {{ registro.conductor_asignado or 'N/A' }}
+          </td>
           <td class="p-2 border">
             {% if registro.photo_filename %}
             <a
@@ -137,17 +147,17 @@
     {% if registros.has_prev %}<a
       href="{{ url_for('main.index', page_registros=registros.prev_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
       class="px-3 py-1 bg-gray-200 rounded"
-      >&laquo; Anterior</a
+      ><< Anterior</a
     >{% endif %} Página {{ registros.page }} de {{ registros.pages }}. {% if
     registros.has_next %}<a
       href="{{ url_for('main.index', page_registros=registros.next_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
       class="px-3 py-1 bg-gray-200 rounded"
-      >Siguiente &raquo;</a
+      >Siguiente ></a
     >{% endif %}
   </div>
 </div>
 
-<!-- Sección de Vehículos Registrados ACTUALIZADA -->
+<!-- Sección de Flota Registrada -->
 <div class="bg-white p-6 rounded-lg shadow-md">
   <div class="flex flex-col md:flex-row justify-between items-center mb-4">
     <h2 class="text-2xl font-semibold">Flota Registrada</h2>
@@ -174,10 +184,10 @@
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     {% for vehiculo in vehiculos.items %}
     <div
-      class="vehicle-card border p-4 rounded-lg bg-gray-50 flex flex-col text-center shadow hover:shadow-lg transition-shadow cursor-pointer"
+      class="vehicle-card border p-4 rounded-lg bg-gray-50 flex flex-col text-center shadow"
       data-vehiculo-id="{{ vehiculo.id }}"
     >
-      <div class="flex-grow w-full">
+      <div class="flex-grow w-full cursor-pointer">
         <p class="font-bold text-xl text-slate-800">
           {{ vehiculo.numero_economico }}
         </p>
@@ -186,30 +196,85 @@
           {% if vehiculo.status == 'adentro' %}<span
             class="px-3 py-1 text-xs font-semibold text-green-800 bg-green-200 rounded-full"
             >EN PATIO</span
-          >{% else %}<span
+          >
+          {% elif vehiculo.status == 'afuera' %}<span
             class="px-3 py-1 text-xs font-semibold text-yellow-800 bg-yellow-200 rounded-full"
             >EN RUTA</span
-          >{% endif %}
+          >
+          {% else %}<span
+            class="px-3 py-1 text-xs font-semibold text-red-800 bg-red-200 rounded-full"
+            >MANTENIMIENTO</span
+          >
+          {% endif %}
         </div>
         <p>{{ vehiculo.modelo }}</p>
-        <p class="text-sm text-gray-600 mb-2">{{ vehiculo.conductor }}</p>
+        <p class="text-sm text-gray-600 mb-2">
+          Default: {{ vehiculo.conductor }}
+        </p>
         <img
           src="data:image/png;base64,{{ vehiculo.qr_code_b64 }}"
           alt="QR"
           class="mt-2 w-32 h-32 mx-auto"
         />
       </div>
-      <div class="grid grid-cols-3 gap-2 mt-4 w-full pt-4 border-t">
+      <div class="grid grid-cols-4 gap-2 mt-4 w-full pt-4 border-t">
         <a
           href="{{ url_for('main.descargar_qr', vehiculo_id=vehiculo.id) }}"
-          class="z-10 flex items-center justify-center bg-green-500 text-white p-2 rounded-md hover:bg-green-600 text-xs"
-          >Descargar</a
+          title="Descargar"
+          class="z-10 flex items-center justify-center bg-green-500 text-white p-2 rounded-md hover:bg-green-600"
         >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </a>
         <a
           href="{{ url_for('main.editar_vehiculo', vehiculo_id=vehiculo.id) }}"
-          class="z-10 flex items-center justify-center bg-yellow-500 text-white p-2 rounded-md hover:bg-yellow-600 text-xs"
-          >Editar</a
+          title="Editar"
+          class="z-10 flex items-center justify-center bg-yellow-500 text-white p-2 rounded-md hover:bg-yellow-600"
         >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z"
+            />
+            <path
+              fill-rule="evenodd"
+              d="M2 6a2 2 0 012-2h4a1 1 0 110 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </a>
+        <button
+          class="maintenance-toggler z-10 flex items-center justify-center bg-gray-500 text-white p-2 rounded-md hover:bg-gray-600"
+          title="Mantto."
+          data-vehiculo-id="{{ vehiculo.id }}"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M.102 2.223A3.004 3.004 0 0 0 3.78 5.897l6.341 6.252A3.003 3.003 0 0 0 13 16a3 3 0 1 0-.851-5.878L5.897 3.781A3.004 3.004 0 0 0 2.223.1l2.141 2.142L4 4l-1.757.364zm13.37 9.019.528.026.287.445.445.287.026.529L15 13l-.242.471-.026.529-.445.287-.287.445-.529.026L13 15l-.471-.242-.529-.026-.287-.445-.445-.287-.026-.529L11 13l.242-.471.026-.529.445-.287.287-.445.529-.026L13 11z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </button>
         <form
           action="{{ url_for('main.eliminar_vehiculo', vehiculo_id=vehiculo.id) }}"
           method="post"
@@ -218,9 +283,21 @@
         >
           <button
             type="submit"
-            class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 text-xs"
+            title="Eliminar"
+            class="w-full flex items-center justify-center bg-red-500 text-white p-2 rounded-md hover:bg-red-600"
           >
-            Eliminar
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                clip-rule="evenodd"
+              />
+            </svg>
           </button>
         </form>
       </div>
@@ -231,12 +308,12 @@
     {% if vehiculos.has_prev %}<a
       href="{{ url_for('main.index', page_vehiculos=vehiculos.prev_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
       class="px-3 py-1 bg-gray-200 rounded"
-      >&laquo; Anterior</a
+      ><< Anterior</a
     >{% endif %} Página {{ vehiculos.page }} de {{ vehiculos.pages }}. {% if
     vehiculos.has_next %}<a
       href="{{ url_for('main.index', page_vehiculos=vehiculos.next_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
       class="px-3 py-1 bg-gray-200 rounded"
-      >Siguiente &raquo;</a
+      >Siguiente ></a
     >{% endif %}
   </div>
 </div>
@@ -262,111 +339,148 @@
     </div>
   </div>
 </div>
+
 {% endblock %} {% block scripts %} {{ super() }}
-<!-- HEREDA EL SCRIPT DE CONEXIÓN DE LA PLANTILLA BASE -->
 <script>
-  // Lógica del Modal
-  const modal = document.getElementById("historialModal");
-  const closeModalButton = document.getElementById("closeModal");
-  const modalTitle = document.getElementById("modalTitle");
-  const modalContent = document.getElementById("modalContent");
-  const vehicleCards = document.querySelectorAll(".vehicle-card");
+  document.addEventListener("DOMContentLoaded", function () {
+    const modal = document.getElementById("historialModal");
+    const closeModalButton = document.getElementById("closeModal");
+    const modalTitle = document.getElementById("modalTitle");
+    const modalContent = document.getElementById("modalContent");
+    const vehicleCards = document.querySelectorAll(".vehicle-card");
 
-  const openModal = () => modal.classList.remove("hidden");
-  const closeModal = () => modal.classList.add("hidden");
+    const openModal = () => modal.classList.remove("hidden");
+    const closeModal = () => modal.classList.add("hidden");
 
-  vehicleCards.forEach((card) => {
-    card.addEventListener("click", function (event) {
-      if (event.target.closest("a, button, form")) {
-        return;
-      }
-      const vehiculoId = this.dataset.vehiculoId;
-      modalContent.innerHTML = "<p>Cargando historial...</p>";
-      openModal();
-      fetch(`/vehiculo/historial/${vehiculoId}`)
-        .then((response) => response.json())
-        .then((data) => {
-          modalTitle.textContent = `Historial de: ${data.placa}`;
-          let contentHtml = `<p class="mb-2"><strong>Modelo:</strong> ${data.modelo}</p><p class="mb-4"><strong>Conductor:</strong> ${data.conductor}</p>`;
-          if (data.historial.length > 0) {
-            contentHtml += `<table class="w-full text-left border-collapse"><thead><tr class="bg-gray-200"><th class="p-2 border">Fecha y Hora</th><th class="p-2 border">Tipo</th><th class="p-2 border">Foto</th></tr></thead><tbody>`;
-            data.historial.forEach((registro) => {
-              const tipoClass =
-                registro.tipo === "Entrada" ? "text-green-600" : "text-red-600";
-              let photoHtml = "";
-              if (registro.photo_filename) {
-                photoHtml = `<a href="/static/capturas/${registro.photo_filename}" target="_blank"><img src="/static/capturas/${registro.photo_filename}" class="h-12 w-16 object-cover rounded-md"></a>`;
-              }
-              contentHtml += `<tr class="hover:bg-gray-50"><td class="p-2 border">${registro.timestamp}</td><td class="p-2 border font-bold ${tipoClass}">${registro.tipo}</td><td class="p-2 border">${photoHtml}</td></tr>`;
-            });
-            contentHtml += "</tbody></table>";
-          } else {
-            contentHtml +=
-              '<p class="text-center text-gray-500 mt-4">No hay registros de acceso para este vehículo.</p>';
-          }
-          modalContent.innerHTML = contentHtml;
-        })
-        .catch((error) => {
-          console.error("Error al cargar el historial:", error);
-          modalContent.innerHTML =
-            '<p class="text-red-500">No se pudo cargar el historial.</p>';
-        });
+    vehicleCards.forEach((card) => {
+      const clickableArea = card.querySelector(".flex-grow");
+      clickableArea.addEventListener("click", function (event) {
+        const vehiculoId = card.dataset.vehiculoId;
+        modalContent.innerHTML = "<p>Cargando historial...</p>";
+        openModal();
+
+        fetch(`/vehiculo/historial/${vehiculoId}`)
+          .then((response) => response.json())
+          .then((data) => {
+            modalTitle.textContent = `Historial de: ${data.numero_economico} (${data.placa})`;
+            let contentHtml = `<p class="mb-2"><strong>Modelo:</strong> ${data.modelo}</p><p class="mb-4"><strong>Operador Default:</strong> ${data.conductor}</p>`;
+            if (data.historial.length > 0) {
+              contentHtml +=
+                '<table class="w-full text-left border-collapse"><thead><tr class="bg-gray-200"><th class="p-2 border">Fecha y Hora</th><th class="p-2 border">Tipo</th><th class="p-2 border">Conductor del Viaje</th><th class="p-2 border">Foto</th></tr></thead><tbody>';
+              data.historial.forEach((registro) => {
+                const tipoClass =
+                  registro.tipo === "Entrada"
+                    ? "text-green-600"
+                    : "text-red-600";
+                let photoHtml = "";
+                if (registro.photo_filename) {
+                  photoHtml = `<a href="/static/capturas/${registro.photo_filename}" target="_blank"><img src="/static/capturas/${registro.photo_filename}" class="h-12 w-16 object-cover rounded-md"></a>`;
+                }
+                const conductorAsignado = registro.conductor_asignado || "N/A";
+                contentHtml += `<tr class="hover:bg-gray-50"><td class="p-2 border">${registro.timestamp}</td><td class="p-2 border font-bold ${tipoClass}">${registro.tipo}</td><td class="p-2 border font-medium">${conductorAsignado}</td><td class="p-2 border">${photoHtml}</td></tr>`;
+              });
+              contentHtml += "</tbody></table>";
+            } else {
+              contentHtml +=
+                '<p class="text-center text-gray-500 mt-4">No hay registros de acceso para esta unidad.</p>';
+            }
+            modalContent.innerHTML = contentHtml;
+          })
+          .catch((error) => {
+            console.error("Error al cargar el historial:", error);
+            modalContent.innerHTML =
+              '<p class="text-red-500">No se pudo cargar el historial.</p>';
+          });
+      });
     });
-  });
-  closeModalButton.addEventListener("click", closeModal);
-  modal.addEventListener("click", function (event) {
-    if (event.target === this) {
-      closeModal();
-    }
-  });
 
-  // Lógica de Actualización en Vivo
-  const socket = io.connect(
-    location.protocol + "//" + document.domain + ":" + location.port
-  );
-  socket.on("update_dashboard", function (data) {
-    console.log("Actualización dinámica recibida:", data);
-
-    const enPatioEl = document.getElementById("unidades-en-patio");
-    const enRutaEl = document.getElementById("unidades-en-ruta");
-    if (enPatioEl && enRutaEl) {
-      enPatioEl.textContent = data.fleet_status.en_patio;
-      enRutaEl.textContent = data.fleet_status.en_ruta;
-    }
-
-    const tableBody = document.getElementById("bitacora-tbody");
-    if (tableBody) {
-      const newRow = document.createElement("tr");
-      newRow.className = "hover:bg-gray-50";
-      const tipoClass =
-        data.new_log.tipo === "Entrada" ? "text-green-600" : "text-red-600";
-      let photoHtml = "";
-      if (data.new_log.photo_filename) {
-        photoHtml = `<a href="/static/capturas/${data.new_log.photo_filename}" target="_blank"><img src="/static/capturas/${data.new_log.photo_filename}" alt="Captura" class="h-12 w-16 object-cover rounded-md"></a>`;
+    closeModalButton.addEventListener("click", closeModal);
+    modal.addEventListener("click", function (event) {
+      if (event.target === this) {
+        closeModal();
       }
-      newRow.innerHTML = `
+    });
+
+    const socket = io.connect(
+      location.protocol + "//" + document.domain + ":" + location.port
+    );
+
+    socket.on("update_dashboard", function (data) {
+      console.log("Actualización dinámica recibida:", data);
+
+      const enPatioEl = document.getElementById("unidades-en-patio");
+      const enRutaEl = document.getElementById("unidades-en-ruta");
+      const mantenimientoEl = document.getElementById("unidades-mantenimiento");
+
+      if (enPatioEl && enRutaEl && mantenimientoEl) {
+        enPatioEl.textContent = data.fleet_status.en_patio;
+        enRutaEl.textContent = data.fleet_status.en_ruta;
+        mantenimientoEl.textContent = data.fleet_status.mantenimiento;
+      }
+
+      if (data.new_log) {
+        const tableBody = document.getElementById("bitacora-tbody");
+        if (tableBody) {
+          const newRow = document.createElement("tr");
+          newRow.className = "hover:bg-gray-50";
+          const tipoClass =
+            data.new_log.tipo === "Entrada" ? "text-green-600" : "text-red-600";
+          let photoHtml = "";
+          if (data.new_log.photo_filename) {
+            photoHtml = `<a href="/static/capturas/${data.new_log.photo_filename}" target="_blank"><img src="/static/capturas/${data.new_log.photo_filename}" alt="Captura" class="h-12 w-16 object-cover rounded-md"></a>`;
+          }
+          const conductorAsignado = data.new_log.conductor_asignado || "N/A";
+          newRow.innerHTML = `
                     <td class="p-2 border">${data.new_log.timestamp}</td>
                     <td class="p-2 border"><span class="${tipoClass} font-bold">${data.new_log.tipo}</span></td>
                     <td class="p-2 border">${data.new_log.placa}</td>
                     <td class="p-2 border">${data.new_log.modelo}</td>
-                    <td class="p-2 border">${data.new_log.conductor}</td>
+                    <td class="p-2 border font-medium">${conductorAsignado}</td>
                     <td class="p-2 border">${photoHtml}</td>
                 `;
-      tableBody.prepend(newRow);
-    }
-
-    const statusContainer = document.getElementById(
-      `status-container-${data.vehicle_update.id}`
-    );
-    if (statusContainer) {
-      if (data.vehicle_update.status === "adentro") {
-        statusContainer.innerHTML =
-          '<span class="px-3 py-1 text-xs font-semibold text-green-800 bg-green-200 rounded-full">EN PATIO</span>';
-      } else {
-        statusContainer.innerHTML =
-          '<span class="px-3 py-1 text-xs font-semibold text-yellow-800 bg-yellow-200 rounded-full">EN RUTA</span>';
+          tableBody.prepend(newRow);
+        }
       }
-    }
+
+      if (data.vehicle_update) {
+        const statusContainer = document.getElementById(
+          `status-container-${data.vehicle_update.id}`
+        );
+        if (statusContainer) {
+          const newStatus = data.vehicle_update.status;
+          let statusHtml = "";
+          if (newStatus === "adentro") {
+            statusHtml =
+              '<span class="px-3 py-1 text-xs font-semibold text-green-800 bg-green-200 rounded-full">EN PATIO</span>';
+          } else if (newStatus === "afuera") {
+            statusHtml =
+              '<span class="px-3 py-1 text-xs font-semibold text-yellow-800 bg-yellow-200 rounded-full">EN RUTA</span>';
+          } else if (newStatus === "mantenimiento") {
+            statusHtml =
+              '<span class="px-3 py-1 text-xs font-semibold text-red-800 bg-red-200 rounded-full">MANTENIMIENTO</span>';
+          }
+          statusContainer.innerHTML = statusHtml;
+        }
+      }
+    });
+
+    document.querySelectorAll(".maintenance-toggler").forEach((button) => {
+      button.addEventListener("click", function () {
+        const vehiculoId = this.dataset.vehiculoId;
+        fetch(`/vehiculo/toggle_maintenance/${vehiculoId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.status !== "success") {
+              alert("Error al cambiar el estado.");
+            }
+            console.log(data.message);
+          })
+          .catch((error) => console.error("Error:", error));
+      });
+    });
   });
 </script>
 {% endblock %}

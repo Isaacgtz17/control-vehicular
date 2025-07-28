@@ -24,7 +24,7 @@
     </nav>
 
     <div class="container mx-auto p-4 md:p-8">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div class="bg-white p-6 rounded-lg shadow-md text-center">
           <h3 class="text-lg font-semibold text-gray-500">Unidades en Patio</h3>
           <p id="unidades-en-patio" class="text-5xl font-bold text-green-600">
@@ -35,6 +35,15 @@
           <h3 class="text-lg font-semibold text-gray-500">Unidades en Ruta</h3>
           <p id="unidades-en-ruta" class="text-5xl font-bold text-yellow-600">
             {{ unidades_en_ruta }}
+          </p>
+        </div>
+        <div class="bg-white p-6 rounded-lg shadow-md text-center">
+          <h3 class="text-lg font-semibold text-gray-500">En Mantenimiento</h3>
+          <p
+            id="unidades-mantenimiento"
+            class="text-5xl font-bold text-red-600"
+          >
+            {{ unidades_mantenimiento }}
           </p>
         </div>
         <div class="bg-white p-6 rounded-lg shadow-md text-center">
@@ -79,7 +88,7 @@
         <div
           class="flex flex-col md:flex-row justify-between items-center mb-4"
         >
-          <h2 class="text-2xl font-semibold">Parque Vehicular</h2>
+          <h2 class="text-2xl font-semibold">Flota Registrada</h2>
           <form
             action="{{ url_for('main.index') }}"
             method="get"
@@ -106,20 +115,39 @@
             class="vehicle-card border p-4 rounded-lg bg-gray-50 flex flex-col items-center text-center shadow"
             data-vehiculo-id="{{ vehiculo.id }}"
           >
-            <p class="font-bold text-lg">{{ vehiculo.placa }}</p>
-            <p>{{ vehiculo.modelo }}</p>
-            <p class="text-sm text-gray-600 mb-2">{{ vehiculo.conductor }}</p>
+            <p class="font-bold text-xl text-slate-800">
+              {{ vehiculo.numero_economico }}
+            </p>
+            <p class="text-sm text-gray-500 mb-1">{{ vehiculo.placa }}</p>
             <div class="mt-2 mb-2" id="status-container-{{ vehiculo.id }}">
               {% if vehiculo.status == 'adentro' %}<span
                 class="px-3 py-1 text-sm font-semibold text-green-800 bg-green-200 rounded-full"
                 >EN PATIO</span
-              >{% else %}<span
+              >
+              {% elif vehiculo.status == 'afuera' %}<span
                 class="px-3 py-1 text-sm font-semibold text-yellow-800 bg-yellow-200 rounded-full"
                 >EN RUTA</span
-              >{% endif %}
+              >
+              {% else %}<span
+                class="px-3 py-1 text-sm font-semibold text-red-800 bg-red-200 rounded-full"
+                >MANTENIMIENTO</span
+              >
+              {% endif %}
             </div>
           </div>
           {% endfor %}
+        </div>
+        <div class="mt-4">
+          {% if vehiculos.has_prev %}<a
+            href="{{ url_for('main.index', page_vehiculos=vehiculos.prev_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
+            class="px-3 py-1 bg-gray-200 rounded"
+            >&laquo; Anterior</a
+          >{% endif %} Página {{ vehiculos.page }} de {{ vehiculos.pages }}. {%
+          if vehiculos.has_next %}<a
+            href="{{ url_for('main.index', page_vehiculos=vehiculos.next_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
+            class="px-3 py-1 bg-gray-200 rounded"
+            >Siguiente &raquo;</a
+          >{% endif %}
         </div>
       </div>
       <div class="bg-white p-6 rounded-lg shadow-md">
@@ -156,6 +184,7 @@
                 <th class="p-2 border">Placa</th>
                 <th class="p-2 border">Modelo</th>
                 <th class="p-2 border">Conductor</th>
+                <th class="p-2 border">Foto</th>
               </tr>
             </thead>
             <tbody id="bitacora-tbody">
@@ -175,10 +204,36 @@
                 <td class="p-2 border">{{ registro.vehiculo.placa }}</td>
                 <td class="p-2 border">{{ registro.vehiculo.modelo }}</td>
                 <td class="p-2 border">{{ registro.vehiculo.conductor }}</td>
+                <td class="p-2 border">
+                  {% if registro.photo_filename %}
+                  <a
+                    href="{{ url_for('static', filename='capturas/' + registro.photo_filename) }}"
+                    target="_blank"
+                  >
+                    <img
+                      src="{{ url_for('static', filename='capturas/' + registro.photo_filename) }}"
+                      alt="Captura"
+                      class="h-12 w-16 object-cover rounded-md"
+                    />
+                  </a>
+                  {% endif %}
+                </td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
+        </div>
+        <div class="mt-4">
+          {% if registros.has_prev %}<a
+            href="{{ url_for('main.index', page_registros=registros.prev_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
+            class="px-3 py-1 bg-gray-200 rounded"
+            >&laquo; Anterior</a
+          >{% endif %} Página {{ registros.page }} de {{ registros.pages }}. {%
+          if registros.has_next %}<a
+            href="{{ url_for('main.index', page_registros=registros.next_num, q_bitacora=q_bitacora, q_vehiculo=q_vehiculo) }}"
+            class="px-3 py-1 bg-gray-200 rounded"
+            >Siguiente &raquo;</a
+          >{% endif %}
         </div>
       </div>
     </div>
@@ -197,9 +252,13 @@
           console.log("Actualización recibida:", data);
           const enPatioEl = document.getElementById("unidades-en-patio");
           const enRutaEl = document.getElementById("unidades-en-ruta");
-          if (enPatioEl && enRutaEl) {
+          const mantenimientoEl = document.getElementById(
+            "unidades-mantenimiento"
+          );
+          if (enPatioEl && enRutaEl && mantenimientoEl) {
             enPatioEl.textContent = data.fleet_status.en_patio;
             enRutaEl.textContent = data.fleet_status.en_ruta;
+            mantenimientoEl.textContent = data.fleet_status.mantenimiento;
           }
 
           const tableBody = document.getElementById("bitacora-tbody");
@@ -210,12 +269,17 @@
               data.new_log.tipo === "Entrada"
                 ? "text-green-600"
                 : "text-red-600";
+            let photoHtml = "";
+            if (data.new_log.photo_filename) {
+              photoHtml = `<a href="/static/capturas/${data.new_log.photo_filename}" target="_blank"><img src="/static/capturas/${data.new_log.photo_filename}" alt="Captura" class="h-12 w-16 object-cover rounded-md"></a>`;
+            }
             newRow.innerHTML = `
                         <td class="p-2 border">${data.new_log.timestamp}</td>
                         <td class="p-2 border"><span class="${tipoClass} font-bold">${data.new_log.tipo}</span></td>
                         <td class="p-2 border">${data.new_log.placa}</td>
                         <td class="p-2 border">${data.new_log.modelo}</td>
                         <td class="p-2 border">${data.new_log.conductor}</td>
+                        <td class="p-2 border">${photoHtml}</td>
                     `;
             tableBody.prepend(newRow);
           }
@@ -224,13 +288,19 @@
             `status-container-${data.vehicle_update.id}`
           );
           if (statusContainer) {
-            if (data.vehicle_update.status === "adentro") {
-              statusContainer.innerHTML =
+            const newStatus = data.vehicle_update.status;
+            let statusHtml = "";
+            if (newStatus === "adentro") {
+              statusHtml =
                 '<span class="px-3 py-1 text-sm font-semibold text-green-800 bg-green-200 rounded-full">EN PATIO</span>';
-            } else {
-              statusContainer.innerHTML =
+            } else if (newStatus === "afuera") {
+              statusHtml =
                 '<span class="px-3 py-1 text-sm font-semibold text-yellow-800 bg-yellow-200 rounded-full">EN RUTA</span>';
+            } else if (newStatus === "mantenimiento") {
+              statusHtml =
+                '<span class="px-3 py-1 text-sm font-semibold text-red-800 bg-red-200 rounded-full">MANTENIMIENTO</span>';
             }
+            statusContainer.innerHTML = statusHtml;
           }
         });
       });

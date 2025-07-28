@@ -6,9 +6,38 @@ import qrcode
 import io
 import uuid
 from app import create_app, db, socketio
-from app.models import User, Vehiculo
+from app.models import User, Vehiculo, Operador # Importar Operador
 
 app = create_app()
+
+@app.cli.command("seed-operators")
+def seed_operators():
+    """Puebla la base de datos con la lista inicial de operadores."""
+    with app.app_context():
+        db.create_all()
+        
+        # Lista de operadores extraída del PDF
+        lista_operadores = [
+            "Fernando Javier Arias Lopez", "Jesus Antonio Jimenez Hernandez", "David Alfonso Escobedo de la Cruz",
+            "Ignacio Sanchez Cruz", "Conrado Rejon Garcia", "Jonatan Hernandez Chan",
+            "Fernando Enrique Morales Caña", "Juan Jose Cordova Magaña", "Rodolfo Olan Avalos",
+            "Medel Alamilla Pablo", "Juan Carlos Hernandez Hernandez", "Estuardo Alfonso Lutzow Dominguez",
+            "Juan Hernandez Magaña", "Geovani Magaña Jimenez", "Algemiro Leon Santos",
+            "Francisco Javier Coj Damian", "Andy Bravata Oyosa", "Luis Arturo Denis Notario",
+            "Ivan Segura Hernandez", "Inocente Perez Cordova"
+        ]
+        
+        print("Poblando operadores...")
+        count = 0
+        for nombre_op in lista_operadores:
+            if not Operador.query.filter_by(nombre=nombre_op).first():
+                operador = Operador(nombre=nombre_op)
+                db.session.add(operador)
+                count += 1
+        
+        db.session.commit()
+        print(f"¡Listo! Se agregaron {count} nuevos operadores.")
+
 
 @app.cli.command("create-user")
 @click.argument("username")
@@ -21,9 +50,11 @@ def create_user(username, password, role):
         if User.query.filter_by(username=username).first():
             print(f"El usuario {username} ya existe.")
             return
+
         if role not in ['admin', 'vigilante']:
             print("Rol inválido. Debe ser 'admin' o 'vigilante'.")
             return
+
         new_user = User(username=username, role=role)
         new_user.set_password(password)
         db.session.add(new_user)
@@ -39,17 +70,12 @@ def import_vehicles(filepath):
         try:
             with open(filepath, mode='r', encoding='utf-8') as csv_file:
                 csv_reader = csv.reader(csv_file)
-                next(csv_reader)
-                next(csv_reader)
-                
+                next(csv_reader)  # Skip header
+                next(csv_reader)  # Skip header
                 print("Iniciando importación de vehículos...")
                 imported_count = 0
                 skipped_count = 0
-
                 for row in csv_reader:
-                    # --- ASIGNACIÓN DE COLUMNAS ACTUALIZADA ---
-                    # Columna 1: No. Economico, Columna 14: PLACAS
-                    # Columna 10: TIPO DE EQUIPO, Columna 3: COMENTARIOS
                     numero_economico = row[1].strip()
                     placa = row[14].strip()
                     modelo = row[10].strip()
@@ -60,11 +86,12 @@ def import_vehicles(filepath):
                         skipped_count += 1
                         continue
 
-                    if Vehiculo.query.filter_by(placa=placa).first() or Vehiculo.query.filter_by(numero_economico=numero_economico).first():
+                    if Vehiculo.query.filter_by(placa=placa).first() or \
+                       Vehiculo.query.filter_by(numero_economico=numero_economico).first():
                         print(f"Unidad '{placa}' / '{numero_economico}' ya existe, omitiendo.")
                         skipped_count += 1
                         continue
-
+                    
                     qr_id_nuevo = str(uuid.uuid4())
                     qr_img = qrcode.make(qr_id_nuevo)
                     buffered = io.BytesIO()

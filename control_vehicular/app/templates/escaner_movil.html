@@ -3,164 +3,314 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Escáner Móvil</title>
+    <title>Escaner QR Vehicular</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script
       src="https://unpkg.com/html5-qrcode"
       type="text/javascript"
     ></script>
+    <style>
+      #reader {
+        width: 100%;
+        max-width: 500px;
+        margin: auto;
+        border: 2px solid #333;
+        border-radius: 8px;
+      }
+      #video-preview-container {
+        position: relative;
+        width: 100%;
+        max-width: 500px;
+        margin: auto;
+      }
+      #video-preview {
+        width: 100%;
+        border-radius: 8px;
+      }
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        text-align: center;
+        border-radius: 8px;
+      }
+    </style>
   </head>
-  <body class="bg-gray-200">
-    <div class="container mx-auto max-w-lg p-4">
-      <h1 class="text-2xl font-bold text-center text-slate-800 mb-4">
-        Escáner de Acceso Vehicular
-      </h1>
+  <body
+    class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4"
+  >
+    <div class="w-full max-w-lg text-center">
+      <h1 class="text-3xl font-bold mb-4">Escaner de Acceso</h1>
+      <p id="instruction-text" class="mb-6">
+        Apunte la cámara al código QR de la unidad.
+      </p>
 
-      <!-- Contenedor del Escáner QR -->
-      <div id="qr-scanner-container">
-        <div
-          id="reader"
-          class="w-full border-4 border-gray-400 rounded-lg overflow-hidden mb-4"
-        ></div>
+      <div id="reader-container" class="mb-4">
+        <div id="reader"></div>
       </div>
 
-      <!-- Contenedor de Captura de Foto (inicialmente oculto) -->
-      <div id="photo-capture-container" class="hidden">
-        <video
-          id="camera-preview"
-          class="w-full rounded-lg mb-4"
-          autoplay
-          playsinline
-        ></video>
-        <canvas id="photo-canvas" class="hidden"></canvas>
+      <!-- Contenedor para la selección de conductor, inicialmente oculto -->
+      <div id="conductor-selector-container" class="hidden mb-4">
+        <label for="conductor-select" class="block mb-2 font-bold"
+          >Seleccione Conductor para la Salida:</label
+        >
+        <select
+          id="conductor-select"
+          class="w-full p-2 rounded bg-gray-800 text-white border border-gray-600"
+        >
+          <!-- Opciones se llenarán dinámicamente -->
+        </select>
+      </div>
+
+      <div id="video-preview-container" class="hidden mb-4">
+        <video id="video-preview" autoplay playsinline></video>
+        <div id="overlay" class="hidden"></div>
+      </div>
+
+      <div id="controls" class="w-full">
         <button
           id="capture-btn"
-          class="w-full bg-green-600 text-white font-bold py-3 rounded-lg text-lg"
+          class="hidden w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg mb-2"
         >
           Tomar Foto y Registrar
         </button>
-      </div>
-
-      <!-- Panel de Resultados -->
-      <div
-        id="result-panel"
-        class="bg-white p-4 rounded-lg shadow-md text-center"
-      >
-        <p id="status-text" class="text-gray-500">
-          Apunte la cámara al código QR...
-        </p>
-      </div>
-
-      <div class="mt-6 text-center">
-        <a
-          href="{{ url_for('main.index') }}"
-          class="text-white bg-slate-600 hover:bg-slate-700 px-5 py-3 rounded-lg"
-          >Volver al Dashboard</a
+        <button
+          id="rescan-btn"
+          class="hidden w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-lg"
         >
+          Escanear de Nuevo
+        </button>
       </div>
+
+      <div
+        id="result"
+        class="mt-6 p-4 rounded-lg w-full max-w-lg text-center"
+      ></div>
+
+      <a
+        href="{{ url_for('main.index') }}"
+        class="mt-8 inline-block text-blue-400 hover:text-blue-300"
+        >&larr; Volver al Dashboard</a
+      >
     </div>
 
     <script>
-      const qrScannerContainer = document.getElementById(
-        "qr-scanner-container"
+      let html5QrCode;
+      let isProcessing = false;
+      let currentQrId = null;
+      let currentAction = null;
+
+      const readerElement = document.getElementById("reader");
+      const resultElement = document.getElementById("result");
+      const videoPreviewContainer = document.getElementById(
+        "video-preview-container"
       );
-      const photoCaptureContainer = document.getElementById(
-        "photo-capture-container"
-      );
-      const cameraPreview = document.getElementById("camera-preview");
-      const photoCanvas = document.getElementById("photo-canvas");
+      const videoPreview = document.getElementById("video-preview");
+      const overlay = document.getElementById("overlay");
       const captureBtn = document.getElementById("capture-btn");
-      const resultPanel = document.getElementById("result-panel");
-      const statusText = document.getElementById("status-text");
+      const rescanBtn = document.getElementById("rescan-btn");
+      const readerContainer = document.getElementById("reader-container");
+      const conductorSelectorContainer = document.getElementById(
+        "conductor-selector-container"
+      );
+      const conductorSelect = document.getElementById("conductor-select");
+      const instructionText = document.getElementById("instruction-text");
 
-      let qrCodeData = null;
-      let stream = null;
-
-      function onScanSuccess(decodedText, decodedResult) {
-        html5QrcodeScanner.clear();
-        qrScannerContainer.classList.add("hidden");
-        statusText.textContent = `QR detectado: ${decodedText.substring(
-          0,
-          8
-        )}...`;
-        qrCodeData = decodedText;
-        startCameraForPhoto();
+      function showMessage(message, isError = false) {
+        resultElement.textContent = message;
+        resultElement.className = `mt-6 p-4 rounded-lg w-full max-w-lg text-center font-bold ${
+          isError ? "bg-red-500" : "bg-green-500"
+        }`;
+        // El mensaje se quedará visible hasta la redirección o el reseteo
       }
 
-      function startCameraForPhoto() {
-        photoCaptureContainer.classList.remove("hidden");
-        statusText.textContent = "Prepare la cámara para la foto de evidencia.";
+      function onScanSuccess(decodedText, decodedResult) {
+        if (isProcessing) return;
+        isProcessing = true;
+        currentQrId = decodedText;
 
-        navigator.mediaDevices
-          .getUserMedia({ video: { facingMode: "environment" } })
-          .then((s) => {
-            stream = s;
-            cameraPreview.srcObject = stream;
+        html5QrCode
+          .stop()
+          .then(() => {
+            readerContainer.classList.add("hidden");
+            // Llama a la nueva API para preparar el escaneo
+            fetch(`/api/prepare_scan/${currentQrId}`)
+              .then((response) => response.json())
+              .then((data) => {
+                if (data.status !== "ok") {
+                  showMessage(data.message, true);
+                  setTimeout(resetScanner, 2000);
+                  return;
+                }
+
+                currentAction = data.action;
+                instructionText.textContent = `Vehículo: ${
+                  data.vehiculo.numero_economico
+                }. Acción: ${data.action.toUpperCase()}`;
+
+                // Si es una salida, muestra el selector de conductor
+                if (data.action === "salida") {
+                  conductorSelect.innerHTML =
+                    '<option value="">-- Seleccionar --</option>';
+                  data.operadores.forEach((op) => {
+                    const option = new Option(op.nombre, op.nombre);
+                    conductorSelect.add(option);
+                  });
+                  conductorSelectorContainer.classList.remove("hidden");
+                }
+
+                // Inicia la cámara para la foto
+                startCameraPreview();
+              })
+              .catch((err) => {
+                showMessage("Error de red al preparar el escaneo.", true);
+                resetScanner();
+              });
           })
           .catch((err) => {
-            console.error("Error al acceder a la cámara:", err);
-            statusText.textContent = "Error al activar la cámara para la foto.";
+            console.error("Failed to stop QR scanner.", err);
+            isProcessing = false;
           });
       }
 
-      captureBtn.addEventListener("click", () => {
-        if (!stream) return;
+      function startCameraPreview() {
+        videoPreviewContainer.classList.remove("hidden");
+        captureBtn.classList.remove("hidden");
+        rescanBtn.classList.remove("hidden");
 
-        statusText.textContent = "Procesando y subiendo...";
+        navigator.mediaDevices
+          .getUserMedia({ video: { facingMode: "environment" } })
+          .then((stream) => {
+            videoPreview.srcObject = stream;
+            captureBtn.onclick = () => captureAndSend(stream);
+          })
+          .catch((err) => {
+            console.error("Error accessing camera for preview: ", err);
+            showMessage("Error al iniciar la cámara de vista previa.", true);
+            resetScanner();
+          });
+      }
+
+      function captureAndSend(stream) {
+        // Validar que se haya seleccionado un conductor si es una salida
+        if (currentAction === "salida" && !conductorSelect.value) {
+          showMessage("Debe seleccionar un conductor.", true);
+          return;
+        }
+
         captureBtn.disabled = true;
-        captureBtn.classList.add("opacity-50");
+        captureBtn.textContent = "Procesando...";
 
-        const context = photoCanvas.getContext("2d");
-        photoCanvas.width = cameraPreview.videoWidth;
-        photoCanvas.height = cameraPreview.videoHeight;
-        context.drawImage(
-          cameraPreview,
-          0,
-          0,
-          photoCanvas.width,
-          photoCanvas.height
-        );
+        const canvas = document.createElement("canvas");
+        canvas.width = videoPreview.videoWidth;
+        canvas.height = videoPreview.videoHeight;
+        const context = canvas.getContext("2d");
+        context.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
+        const photoDataUrl = canvas.toDataURL("image/jpeg");
 
-        const photoBase64 = photoCanvas.toDataURL("image/jpeg", 0.8);
-
-        // Detener la cámara
         stream.getTracks().forEach((track) => track.stop());
 
-        // Enviar datos al servidor
-        fetch("{{ url_for('main.verificar_qr') }}", {
+        videoPreview.srcObject = null;
+        videoPreview.poster = photoDataUrl;
+        overlay.textContent = "REGISTRANDO...";
+        overlay.classList.remove("hidden");
+
+        const payload = {
+          qr_id: currentQrId,
+          photo: photoDataUrl,
+          conductor_asignado:
+            currentAction === "salida" ? conductorSelect.value : null,
+        };
+
+        fetch("/verificar_qr", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ qr_id: qrCodeData, photo: photoBase64 }),
+          body: JSON.stringify(payload),
         })
           .then((response) => response.json())
           .then((data) => {
+            showMessage(data.message, data.status !== "autorizado");
+
+            // *** NUEVA LÓGICA DE REDIRECCIÓN ***
             if (data.status === "autorizado") {
-              resultPanel.className =
-                "bg-green-100 p-4 rounded-lg shadow-md text-center";
-              statusText.innerHTML = `<strong class="text-lg text-green-800">${data.message}</strong><br><span class="text-green-700">${data.placa}</span>`;
+              // Si el registro es exitoso, redirige al dashboard principal después de 2 segundos.
+              setTimeout(() => {
+                window.location.href = "{{ url_for('main.index') }}";
+              }, 2000);
             } else {
-              resultPanel.className =
-                "bg-red-100 p-4 rounded-lg shadow-md text-center";
-              statusText.innerHTML = `<strong class="text-lg text-red-800">ERROR</strong><br><span class="text-red-700">${data.message}</span>`;
+              // Si hay un error, resetea el escáner para poder intentarlo de nuevo.
+              setTimeout(resetScanner, 2000);
             }
           })
           .catch((error) => {
             console.error("Error:", error);
-            resultPanel.className =
-              "bg-red-100 p-4 rounded-lg shadow-md text-center";
-            statusText.innerHTML = `<strong class="text-lg text-red-800">ERROR DE RED</strong>`;
-          })
-          .finally(() => {
-            photoCaptureContainer.classList.add("hidden");
+            showMessage("Error de conexión con el servidor.", true);
+            setTimeout(resetScanner, 2000);
           });
-      });
+      }
 
-      const html5QrcodeScanner = new Html5QrcodeScanner(
-        "reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        false
-      );
-      html5QrcodeScanner.render(onScanSuccess, (error) => {});
+      function onScanFailure(error) {
+        // Silencioso para no molestar al usuario
+      }
+
+      function startScanner() {
+        html5QrCode = new Html5Qrcode("reader");
+        html5QrCode
+          .start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            onScanSuccess,
+            onScanFailure
+          )
+          .catch((err) => {
+            showMessage(
+              "No se pudo iniciar el escáner. Verifique los permisos de la cámara.",
+              true
+            );
+          });
+      }
+
+      function resetScanner() {
+        isProcessing = false;
+        currentQrId = null;
+        currentAction = null;
+
+        if (videoPreview.srcObject) {
+          videoPreview.srcObject.getTracks().forEach((track) => track.stop());
+        }
+
+        videoPreviewContainer.classList.add("hidden");
+        conductorSelectorContainer.classList.add("hidden");
+        captureBtn.classList.add("hidden");
+        rescanBtn.classList.add("hidden");
+        overlay.classList.add("hidden");
+        readerContainer.classList.remove("hidden");
+
+        resultElement.textContent = "";
+        resultElement.className =
+          "mt-6 p-4 rounded-lg w-full max-w-lg text-center";
+
+        videoPreview.srcObject = null;
+        videoPreview.poster = "";
+        captureBtn.disabled = false;
+        captureBtn.textContent = "Tomar Foto y Registrar";
+        instructionText.textContent =
+          "Apunte la cámara al código QR de la unidad.";
+
+        startScanner();
+      }
+
+      rescanBtn.addEventListener("click", resetScanner);
+
+      document.addEventListener("DOMContentLoaded", startScanner);
     </script>
   </body>
 </html>
