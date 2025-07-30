@@ -1,0 +1,90 @@
+{% extends "base_admin.html" %} {% block title %}Inventario de Llantas{%
+endblock %} {% block content %}
+<div class="bg-white p-6 rounded-lg shadow-md">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-semibold">Inventario de Llantas</h1>
+    <a
+      href="{{ url_for('llantas.anadir_llanta') }}"
+      class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+    >
+      Añadir Nueva Llanta
+    </a>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="py-3 px-4 uppercase font-semibold text-sm text-left">
+            DOT/Serial
+          </th>
+          <th class="py-3 px-4 uppercase font-semibold text-sm text-left">
+            Marca y Modelo
+          </th>
+          <th class="py-3 px-4 uppercase font-semibold text-sm text-left">
+            Medida
+          </th>
+          <th class="py-3 px-4 uppercase font-semibold text-sm text-center">
+            Estado
+          </th>
+          <th class="py-3 px-4 uppercase font-semibold text-sm text-center">
+            Ubicación
+          </th>
+          <th class="py-3 px-4 uppercase font-semibold text-sm text-right">
+            Km Acumulados
+          </th>
+          <th class="py-3 px-4 uppercase font-semibold text-sm text-center">
+            Acciones
+          </th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for llanta in llantas %}
+        <tr class="border-b hover:bg-gray-50">
+          <td class="py-3 px-4 font-mono text-xs">{{ llanta.dot_serial }}</td>
+          <td class="py-3 px-4">{{ llanta.marca }} {{ llanta.modelo }}</td>
+          <td class="py-3 px-4">{{ llanta.medida }}</td>
+          <td class="py-3 px-4 text-center">
+            {% if llanta.status == 'En Bodega' %}
+            <span
+              class="px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-200 rounded-full"
+              >EN BODEGA</span
+            >
+            {% elif llanta.status == 'Montada' %}
+            <span
+              class="px-2 py-1 text-xs font-semibold text-green-800 bg-green-200 rounded-full"
+              >MONTADA</span
+            >
+            {% else %}
+            <span
+              class="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-300 rounded-full"
+              >{{ llanta.status.upper() }}</span
+            >
+            {% endif %}
+          </td>
+          <td class="py-3 px-4 text-center">
+            {# Aquí mostraremos el vehículo y la posición si está montada #} -
+          </td>
+          <td class="py-3 px-4 text-right font-semibold">
+            {{ "%.1f"|format(llanta.kilometraje_acumulado) }} km
+          </td>
+          <td class="py-3 px-4 text-center">
+            <a
+              href="#"
+              class="text-yellow-600 hover:text-yellow-900 mx-2 font-medium"
+              >Editar</a
+            >
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" class="text-center py-4 text-gray-500">
+            No hay llantas registradas en el inventario.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

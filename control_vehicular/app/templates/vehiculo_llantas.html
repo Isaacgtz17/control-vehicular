@@ -1,0 +1,314 @@
+{% extends "base_admin.html" %} {% block title %}Gestionar Llantas de {{
+vehiculo.numero_economico }}{% endblock %} {% block content %}
+<div class="bg-white p-6 rounded-lg shadow-md mb-8">
+  <div class="flex justify-between items-center mb-6 border-b pb-4">
+    <div>
+      <h1 class="text-2xl font-semibold">Gestionar Llantas</h1>
+      <p class="text-gray-600">
+        {{ vehiculo.numero_economico }} / {{ vehiculo.placa }}
+      </p>
+    </div>
+    <a
+      href="{{ url_for('llantas.inventario') }}"
+      class="text-blue-600 hover:underline"
+      >&larr; Volver al Inventario</a
+    >
+  </div>
+
+  <!-- Diagrama del Vehículo -->
+  <div class="flex justify-center">
+    <div class="grid grid-cols-4 gap-x-4 gap-y-8 w-full max-w-lg">
+      <!-- Eje Delantero -->
+      {% for pos in posiciones if pos.codigo in ['DI', 'DD'] %}
+      <div class="col-span-2 flex justify-center">
+        {% set montaje = mapa_posiciones.get(pos.id) %}
+        <div
+          class="border-2 {{ 'border-green-500' if montaje else 'border-dashed border-gray-400' }} rounded-lg p-3 w-40 text-center"
+        >
+          <p class="font-bold text-sm">{{ pos.descripcion }}</p>
+          <p class="text-xs text-gray-500">{{ pos.codigo }}</p>
+          <div class="my-2 h-16 flex items-center justify-center">
+            {% if montaje %}
+            <p class="font-mono text-xs bg-gray-100 p-1 rounded">
+              {{ montaje.llanta.dot_serial }}
+            </p>
+            {% else %}
+            <p class="text-gray-400 text-sm">Vacante</p>
+            {% endif %}
+          </div>
+          {% if montaje %}
+          <button
+            onclick="openDesmontarModal({{ montaje.id }}, '{{ pos.codigo }}', '{{ montaje.llanta.dot_serial }}')"
+            class="w-full bg-red-500 text-white text-xs py-1 rounded hover:bg-red-600"
+          >
+            Desmontar
+          </button>
+          {% else %}
+          <button
+            onclick="openMontarModal({{ pos.id }}, '{{ pos.codigo }}')"
+            class="w-full bg-green-500 text-white text-xs py-1 rounded hover:bg-green-600"
+          >
+            Montar
+          </button>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+
+      <!-- Ejes Traseros -->
+      {% for eje_num in [1, 2] %} {% for pos_code in ['T' + eje_num|string +
+      'LI', 'T' + eje_num|string + 'LE', 'T' + eje_num|string + 'RI', 'T' +
+      eje_num|string + 'RE'] %} {% set pos = posiciones|selectattr('codigo',
+      'equalto', pos_code)|first %} {% if pos %} {% set montaje =
+      mapa_posiciones.get(pos.id) %}
+      <div class="flex justify-center">
+        <div
+          class="border-2 {{ 'border-green-500' if montaje else 'border-dashed border-gray-400' }} rounded-lg p-3 w-40 text-center"
+        >
+          <p class="font-bold text-sm">{{ pos.descripcion }}</p>
+          <p class="text-xs text-gray-500">{{ pos.codigo }}</p>
+          <div class="my-2 h-16 flex items-center justify-center">
+            {% if montaje %}
+            <p class="font-mono text-xs bg-gray-100 p-1 rounded">
+              {{ montaje.llanta.dot_serial }}
+            </p>
+            {% else %}
+            <p class="text-gray-400 text-sm">Vacante</p>
+            {% endif %}
+          </div>
+          {% if montaje %}
+          <button
+            onclick="openDesmontarModal({{ montaje.id }}, '{{ pos.codigo }}', '{{ montaje.llanta.dot_serial }}')"
+            class="w-full bg-red-500 text-white text-xs py-1 rounded hover:bg-red-600"
+          >
+            Desmontar
+          </button>
+          {% else %}
+          <button
+            onclick="openMontarModal({{ pos.id }}, '{{ pos.codigo }}')"
+            class="w-full bg-green-500 text-white text-xs py-1 rounded hover:bg-green-600"
+          >
+            Montar
+          </button>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %} {% endfor %} {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Modal para Montar Llanta -->
+<div
+  id="montarModal"
+  class="fixed inset-0 bg-gray-800 bg-opacity-75 h-full w-full hidden z-50 flex items-center justify-center"
+>
+  <div
+    class="relative p-5 border w-full max-w-md shadow-lg rounded-md bg-white"
+  >
+    <h3 class="text-lg font-medium text-gray-900 mb-4">
+      Montar Llanta en <span id="montarPosicionCodigo" class="font-bold"></span>
+    </h3>
+    <form id="montarForm">
+      <input type="hidden" name="posicion_id" id="montarPosicionId" />
+      <div class="mb-4">
+        <label
+          for="montarLlantaId"
+          class="block text-sm font-medium text-gray-700"
+          >Llanta disponible en bodega</label
+        >
+        <select
+          name="llanta_id"
+          id="montarLlantaId"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        >
+          <option value="">-- Seleccione una llanta --</option>
+          {% for llanta in llantas_bodega %}
+          <option value="{{ llanta.id }}">
+            {{ llanta.dot_serial }} ({{ llanta.marca }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-4">
+        <label
+          for="montarKmActual"
+          class="block text-sm font-medium text-gray-700"
+          >Kilometraje actual del vehículo</label
+        >
+        <input
+          type="number"
+          name="km_actual"
+          id="montarKmActual"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md shadow-sm"
+        />
+      </div>
+      <div class="flex justify-end space-x-2">
+        <button
+          type="button"
+          onclick="closeModal('montarModal')"
+          class="bg-gray-200 text-gray-800 py-2 px-4 rounded hover:bg-gray-300"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+        >
+          Confirmar Montaje
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal para Desmontar Llanta -->
+<div
+  id="desmontarModal"
+  class="fixed inset-0 bg-gray-800 bg-opacity-75 h-full w-full hidden z-50 flex items-center justify-center"
+>
+  <div
+    class="relative p-5 border w-full max-w-md shadow-lg rounded-md bg-white"
+  >
+    <h3 class="text-lg font-medium text-gray-900 mb-4">
+      Desmontar Llanta
+      <span id="desmontarLlantaSerial" class="font-mono text-sm"></span> de
+      <span id="desmontarPosicionCodigo" class="font-bold"></span>
+    </h3>
+    <form id="desmontarForm">
+      <input type="hidden" name="montaje_id" id="desmontarMontajeId" />
+      <div class="mb-4">
+        <label
+          for="desmontarKmActual"
+          class="block text-sm font-medium text-gray-700"
+          >Kilometraje actual del vehículo</label
+        >
+        <input
+          type="number"
+          name="km_actual"
+          id="desmontarKmActual"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md shadow-sm"
+        />
+      </div>
+      <div class="mb-4">
+        <label
+          for="desmontarMotivo"
+          class="block text-sm font-medium text-gray-700"
+          >Motivo del desmontaje</label
+        >
+        <textarea
+          name="motivo"
+          id="desmontarMotivo"
+          rows="3"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md shadow-sm"
+        ></textarea>
+      </div>
+      <div class="mb-4">
+        <label
+          for="desmontarNuevoStatus"
+          class="block text-sm font-medium text-gray-700"
+          >Nuevo estado de la llanta</label
+        >
+        <select
+          name="nuevo_status"
+          id="desmontarNuevoStatus"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm"
+        >
+          <option value="En Bodega">Enviar a Bodega</option>
+          <option value="Renovación">Enviar a Renovación</option>
+          <option value="Desechada">Desechar</option>
+        </select>
+      </div>
+      <div class="flex justify-end space-x-2">
+        <button
+          type="button"
+          onclick="closeModal('desmontarModal')"
+          class="bg-gray-200 text-gray-800 py-2 px-4 rounded hover:bg-gray-300"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700"
+        >
+          Confirmar Desmontaje
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %} {% block scripts %} {{ super() }}
+<script>
+  function openMontarModal(posicionId, posicionCodigo) {
+      document.getElementById('montarPosicionId').value = posicionId;
+      document.getElementById('montarPosicionCodigo').textContent = posicionCodigo;
+      document.getElementById('montarModal').classList.remove('hidden');
+  }
+
+  function openDesmontarModal(montajeId, posicionCodigo, llantaSerial) {
+      document.getElementById('desmontarMontajeId').value = montajeId;
+      document.getElementById('desmontarPosicionCodigo').textContent = posicionCodigo;
+      document.getElementById('desmontarLlantaSerial').textContent = llantaSerial;
+      document.getElementById('desmontarModal').classList.remove('hidden');
+  }
+
+  function closeModal(modalId) {
+      document.getElementById(modalId).classList.add('hidden');
+  }
+
+  document.getElementById('montarForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = {
+          vehiculo_id: {{ vehiculo.id }},
+          posicion_id: formData.get('posicion_id'),
+          llanta_id: formData.get('llanta_id'),
+          km_actual: formData.get('km_actual')
+      };
+
+      fetch("{{ url_for('llantas.montar_llanta') }}", {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(data)
+      })
+      .then(res => res.json())
+      .then(result => {
+          if (result.status === 'success') {
+              window.location.reload();
+          } else {
+              alert('Error: ' + result.message);
+          }
+      });
+  });
+
+  document.getElementById('desmontarForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = {
+          montaje_id: formData.get('montaje_id'),
+          km_actual: formData.get('km_actual'),
+          motivo: formData.get('motivo'),
+          nuevo_status: formData.get('nuevo_status')
+      };
+
+      fetch("{{ url_for('llantas.desmontar_llanta') }}", {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(data)
+      })
+      .then(res => res.json())
+      .then(result => {
+          if (result.status === 'success') {
+              window.location.reload();
+          } else {
+              alert('Error: ' + result.message);
+          }
+      });
+  });
+</script>
+{% endblock %}

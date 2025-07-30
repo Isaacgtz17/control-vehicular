@@ -185,7 +185,10 @@
       class="vehicle-card border p-4 rounded-lg bg-gray-50 flex flex-col text-center shadow"
       data-vehiculo-id="{{ vehiculo.id }}"
     >
-      <div class="flex-grow w-full cursor-pointer">
+      <div
+        class="flex-grow w-full cursor-pointer"
+        onclick="openHistorialModal({{ vehiculo.id }})"
+      >
         <p class="font-bold text-xl text-slate-800">
           {{ vehiculo.numero_economico }}
         </p>
@@ -213,10 +216,10 @@
           class="mt-2 w-32 h-32 mx-auto"
         />
       </div>
-      <div class="grid grid-cols-4 gap-2 mt-4 w-full pt-4 border-t">
+      <div class="grid grid-cols-5 gap-2 mt-4 w-full pt-4 border-t">
         <a
           href="{{ url_for('main.descargar_qr', vehiculo_id=vehiculo.id) }}"
-          title="Descargar"
+          title="Descargar QR"
           class="z-10 flex items-center justify-center bg-green-500 text-white p-2 rounded-md hover:bg-green-600"
         >
           <svg
@@ -234,7 +237,7 @@
         </a>
         <a
           href="{{ url_for('main.editar_vehiculo', vehiculo_id=vehiculo.id) }}"
-          title="Editar"
+          title="Editar Vehículo"
           class="z-10 flex items-center justify-center bg-yellow-500 text-white p-2 rounded-md hover:bg-yellow-600"
         >
           <svg
@@ -255,7 +258,7 @@
         </a>
         <button
           class="maintenance-toggler z-10 flex items-center justify-center bg-gray-500 text-white p-2 rounded-md hover:bg-gray-600"
-          title="Mantto."
+          title="Mantenimiento"
           data-vehiculo-id="{{ vehiculo.id }}"
         >
           <svg
@@ -271,6 +274,25 @@
             />
           </svg>
         </button>
+        <!-- NUEVO BOTÓN PARA GESTIONAR LLANTAS -->
+        <a
+          href="{{ url_for('llantas.gestionar_vehiculo', vehiculo_id=vehiculo.id) }}"
+          title="Gestionar Llantas"
+          class="z-10 flex items-center justify-center bg-cyan-500 text-white p-2 rounded-md hover:bg-cyan-600"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </a>
         <form
           action="{{ url_for('main.eliminar_vehiculo', vehiculo_id=vehiculo.id) }}"
           method="post"
@@ -338,49 +360,41 @@
 
 {% endblock %} {% block scripts %} {{ super() }}
 <script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const modal = document.getElementById("historialModal");
-    const closeModalButton = document.getElementById("closeModal");
-    const modalTitle = document.getElementById("modalTitle");
-    const modalContent = document.getElementById("modalContent");
-    const vehicleCards = document.querySelectorAll(".vehicle-card");
+  const modal = document.getElementById("historialModal");
+  const closeModalButton = document.getElementById("closeModal");
+  const modalTitle = document.getElementById("modalTitle");
+  const modalContent = document.getElementById("modalContent");
 
-    const openModal = () => modal.classList.remove("hidden");
-    const closeModal = () => modal.classList.add("hidden");
+  function openHistorialModal(vehiculoId) {
+    modalContent.innerHTML = "<p>Cargando historial...</p>";
+    modal.classList.remove("hidden");
 
-    vehicleCards.forEach((card) => {
-      card.querySelector(".flex-grow").addEventListener("click", function () {
-        const vehiculoId = card.dataset.vehiculoId;
-        modalContent.innerHTML = "<p>Cargando historial...</p>";
-        openModal();
+    fetch(`/vehiculo/historial/${vehiculoId}`)
+      .then((response) => response.json())
+      .then((data) => {
+        modalTitle.textContent = `Historial de: ${data.numero_economico} (${data.placa})`;
+        let contentHtml = `<p class="mb-4"><strong>Operador Default:</strong> ${data.conductor}</p>`;
+        if (data.historial.length > 0) {
+          contentHtml += data.historial
+            .map((registro) => {
+              const tipoClass =
+                registro.tipo === "Entrada"
+                  ? "bg-green-100 text-green-800"
+                  : "bg-red-100 text-red-800";
+              let checklistHtml = '<p class="text-gray-500">No aplica</p>';
 
-        fetch(`/vehiculo/historial/${vehiculoId}`)
-          .then((response) => response.json())
-          .then((data) => {
-            modalTitle.textContent = `Historial de: ${data.numero_economico} (${data.placa})`;
-            let contentHtml = `<p class="mb-4"><strong>Operador Default:</strong> ${data.conductor}</p>`;
-
-            if (data.historial.length > 0) {
-              contentHtml += data.historial
-                .map((registro) => {
-                  const tipoClass =
-                    registro.tipo === "Entrada"
-                      ? "bg-green-100 text-green-800"
-                      : "bg-red-100 text-red-800";
-                  let checklistHtml = '<p class="text-gray-500">No aplica</p>';
-
-                  if (registro.checklist) {
-                    const items = ["llantas", "luces", "niveles", "carroceria"];
-                    checklistHtml = items
-                      .map((itemKey) => {
-                        const item = registro.checklist[itemKey];
-                        const estadoClass =
-                          item.estado === "ok"
-                            ? "text-green-600"
-                            : "text-red-600 font-bold";
-                        let fallaHtml = "";
-                        if (item.estado === "falla") {
-                          fallaHtml = `<div class="ml-4 mt-1 text-sm text-gray-700">
+              if (registro.checklist) {
+                const items = ["llantas", "luces", "niveles", "carroceria"];
+                checklistHtml = items
+                  .map((itemKey) => {
+                    const item = registro.checklist[itemKey];
+                    const estadoClass =
+                      item.estado === "ok"
+                        ? "text-green-600"
+                        : "text-red-600 font-bold";
+                    let fallaHtml = "";
+                    if (item.estado === "falla") {
+                      fallaHtml = `<div class="ml-4 mt-1 text-sm text-gray-700">
                                             <p><strong>Obs:</strong> ${
                                               item.obs || "N/A"
                                             }</p>
@@ -390,16 +404,16 @@
                                                 : ""
                                             }
                                         </div>`;
-                        }
-                        return `<div class="py-1"><span class="capitalize">${itemKey}:</span> <span class="${estadoClass}">${item.estado.toUpperCase()}</span>${fallaHtml}</div>`;
-                      })
-                      .join("");
-                    if (registro.checklist.generales) {
-                      checklistHtml += `<div class="mt-2 pt-2 border-t"><strong>Obs. Generales:</strong> ${registro.checklist.generales}</div>`;
                     }
-                  }
+                    return `<div class="py-1"><span class="capitalize">${itemKey}:</span> <span class="${estadoClass}">${item.estado.toUpperCase()}</span>${fallaHtml}</div>`;
+                  })
+                  .join("");
+                if (registro.checklist.generales) {
+                  checklistHtml += `<div class="mt-2 pt-2 border-t"><strong>Obs. Generales:</strong> ${registro.checklist.generales}</div>`;
+                }
+              }
 
-                  return `
+              return `
                                 <div class="border rounded-lg mb-4 overflow-hidden">
                                     <div class="p-3 ${tipoClass} flex justify-between items-center">
                                         <h4 class="font-bold text-lg">${
@@ -424,31 +438,29 @@
                                     </div>
                                 </div>
                             `;
-                })
-                .join("");
-            } else {
-              contentHtml +=
-                '<p class="text-center text-gray-500 mt-4">No hay registros de acceso para esta unidad.</p>';
-            }
-            modalContent.innerHTML = contentHtml;
-          });
+            })
+            .join("");
+        } else {
+          contentHtml +=
+            '<p class="text-center text-gray-500 mt-4">No hay registros de acceso para esta unidad.</p>';
+        }
+        modalContent.innerHTML = contentHtml;
       });
-    });
+  }
 
-    closeModalButton.addEventListener("click", closeModal);
+  document.addEventListener("DOMContentLoaded", function () {
+    closeModalButton.addEventListener("click", () =>
+      modal.classList.add("hidden")
+    );
     modal.addEventListener("click", function (event) {
       if (event.target === this) {
-        closeModal();
+        modal.classList.add("hidden");
       }
     });
 
-    // --- CAMBIO: Lógica del botón de mantenimiento actualizada ---
     document.querySelectorAll(".maintenance-toggler").forEach((button) => {
       button.addEventListener("click", function () {
         const vehiculoId = this.dataset.vehiculoId;
-
-        // Se elimina la confirmación y las alertas para una experiencia más fluida.
-        // La actualización visual se gestiona automáticamente a través de Socket.IO.
         fetch(`/vehiculo/toggle_maintenance/${vehiculoId}`, {
           method: "POST",
           headers: {
@@ -457,7 +469,7 @@
         })
           .then((response) => response.json())
           .then((data) => {
-            console.log(data.message); // Log silencioso para depuración
+            console.log(data.message);
           })
           .catch((error) => {
             console.error("Error al cambiar estado:", error);

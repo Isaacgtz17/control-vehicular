@@ -50,4 +50,9 @@ def create_app():
     from .catalog import catalog_bp
     app.register_blueprint(catalog_bp)
 
+    # --- NUEVO BLUEPRINT PARA LLANTAS ---
+    from .llantas_routes import llantas_bp
+    app.register_blueprint(llantas_bp)
+
+
     return app

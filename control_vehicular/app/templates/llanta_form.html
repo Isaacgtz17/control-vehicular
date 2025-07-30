@@ -1,0 +1,116 @@
+{% extends "base_admin.html" %} {% block title %}{{ title }}{% endblock %} {%
+block content %}
+<div class="bg-white p-8 rounded-lg shadow-md max-w-2xl mx-auto">
+  <h1 class="text-2xl font-semibold mb-6">{{ title }}</h1>
+
+  <form method="post">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="md:col-span-2">
+        <label
+          for="dot_serial"
+          class="block text-gray-700 text-sm font-bold mb-2"
+          >DOT / Número de Serie (Único)</label
+        >
+        <input
+          type="text"
+          name="dot_serial"
+          id="dot_serial"
+          required
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+        />
+      </div>
+      <div>
+        <label for="marca" class="block text-gray-700 text-sm font-bold mb-2"
+          >Marca</label
+        >
+        <input
+          type="text"
+          name="marca"
+          id="marca"
+          required
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+        />
+      </div>
+      <div>
+        <label for="modelo" class="block text-gray-700 text-sm font-bold mb-2"
+          >Modelo</label
+        >
+        <input
+          type="text"
+          name="modelo"
+          id="modelo"
+          required
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+        />
+      </div>
+      <div>
+        <label for="medida" class="block text-gray-700 text-sm font-bold mb-2"
+          >Medida (Ej: 11R22.5)</label
+        >
+        <input
+          type="text"
+          name="medida"
+          id="medida"
+          required
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+        />
+      </div>
+      <div>
+        <label for="costo" class="block text-gray-700 text-sm font-bold mb-2"
+          >Costo de Adquisición (MXN)</label
+        >
+        <input
+          type="number"
+          name="costo"
+          id="costo"
+          step="0.01"
+          required
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+        />
+      </div>
+      <div>
+        <label
+          for="orden_compra"
+          class="block text-gray-700 text-sm font-bold mb-2"
+          >Orden de Compra (Opcional)</label
+        >
+        <input
+          type="text"
+          name="orden_compra"
+          id="orden_compra"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+        />
+      </div>
+      <div>
+        <label
+          for="fecha_compra"
+          class="block text-gray-700 text-sm font-bold mb-2"
+          >Fecha de Compra</label
+        >
+        <input
+          type="date"
+          name="fecha_compra"
+          id="fecha_compra"
+          required
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+        />
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end mt-8">
+      <a
+        href="{{ url_for('llantas.inventario') }}"
+        class="text-gray-600 hover:text-gray-800 font-bold py-2 px-4 rounded"
+      >
+        Cancelar
+      </a>
+      <button
+        type="submit"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-4"
+      >
+        Guardar Llanta
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
