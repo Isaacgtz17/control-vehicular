@@ -442,6 +442,29 @@
       }
     });
 
+    // --- CAMBIO: Lógica del botón de mantenimiento actualizada ---
+    document.querySelectorAll(".maintenance-toggler").forEach((button) => {
+      button.addEventListener("click", function () {
+        const vehiculoId = this.dataset.vehiculoId;
+
+        // Se elimina la confirmación y las alertas para una experiencia más fluida.
+        // La actualización visual se gestiona automáticamente a través de Socket.IO.
+        fetch(`/vehiculo/toggle_maintenance/${vehiculoId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            console.log(data.message); // Log silencioso para depuración
+          })
+          .catch((error) => {
+            console.error("Error al cambiar estado:", error);
+          });
+      });
+    });
+
     const socket = io.connect(
       location.protocol + "//" + document.domain + ":" + location.port
     );

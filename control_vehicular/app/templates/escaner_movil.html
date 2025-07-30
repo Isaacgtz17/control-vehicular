@@ -54,7 +54,7 @@
       </div>
 
       <div id="salida-form-container" class="hidden mb-4 text-left">
-        <!-- Conductor, se llenará dinámicamente -->
+        <!-- El formulario de salida se renderizará aquí -->
       </div>
 
       <div id="checklist-container" class="hidden w-full text-left">
@@ -72,14 +72,14 @@
       >
     </div>
 
-    <!-- Vista de Cámara para Fallas -->
+    <!-- Vista de Cámara para Fallas y Evidencia General -->
     <div id="camera-modal" class="camera-view hidden">
       <video id="camera-preview" autoplay playsinline></video>
       <button
-        id="capture-failure-btn"
+        id="capture-btn"
         class="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-full text-lg"
       >
-        Capturar Falla
+        Capturar
       </button>
       <button
         id="cancel-capture-btn"
@@ -90,13 +90,14 @@
     </div>
 
     <script>
-      // --- STATE MANAGEMENT ---
+      // --- GESTIÓN DE ESTADO ---
       let html5QrCode;
       let isProcessing = false;
       let currentQrId = null;
       let currentAction = null;
       let checklistData = {};
-      let currentChecklistItem = null;
+      let departurePhotoData = null; // Almacenará la foto de evidencia general
+      let currentChecklistItem = null; // Para saber qué foto de falla se está tomando
 
       const CHECKLIST_ITEMS = [
         { key: "llantas", label: "Condición de Llantas" },
@@ -105,7 +106,7 @@
         { key: "carroceria", label: "Carrocería y Espejos" },
       ];
 
-      // --- DOM ELEMENTS ---
+      // --- ELEMENTOS DEL DOM ---
       const mainView = document.getElementById("main-view");
       const mainTitle = document.getElementById("main-title");
       const instructionText = document.getElementById("instruction-text");
@@ -117,10 +118,10 @@
       const resultElement = document.getElementById("result");
       const cameraModal = document.getElementById("camera-modal");
       const cameraPreview = document.getElementById("camera-preview");
-      const captureFailureBtn = document.getElementById("capture-failure-btn");
+      const captureBtn = document.getElementById("capture-btn");
       const cancelCaptureBtn = document.getElementById("cancel-capture-btn");
 
-      // --- UI FUNCTIONS ---
+      // --- FUNCIONES DE UI ---
       function showMessage(message, isError = false) {
         resultElement.textContent = message;
         resultElement.className = `mt-6 p-4 rounded-lg w-full max-w-lg text-center font-bold ${
@@ -128,10 +129,26 @@
         }`;
       }
 
+      function checkCanProceed() {
+        const conductor = document.getElementById("conductor-select")?.value;
+        const startButton = document.getElementById("start-checklist-btn");
+        if (conductor && departurePhotoData && startButton) {
+          startButton.disabled = false;
+        }
+      }
+
       function renderSalidaForm(operadores) {
+        mainTitle.textContent = "Registro de Salida";
+        instructionText.textContent =
+          "Complete los siguientes pasos para continuar.";
         salidaFormContainer.innerHTML = `
             <div class="mb-4">
-                <label for="conductor-select" class="block mb-2 font-bold">Seleccione Conductor:</label>
+                <label class="block mb-2 font-bold">1. Evidencia de Salida:</label>
+                <button id="take-evidence-photo-btn" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-lg">Tomar Foto General</button>
+                <p id="photo-status-general" class="text-green-400 mt-2 hidden">✓ Foto de evidencia guardada</p>
+            </div>
+            <div class="mb-4">
+                <label for="conductor-select" class="block mb-2 font-bold">2. Seleccione Conductor:</label>
                 <select id="conductor-select" class="w-full p-2 rounded bg-gray-800 text-white border border-gray-600">
                     <option value="">-- Seleccionar --</option>
                     ${operadores
@@ -142,12 +159,19 @@
                       .join("")}
                 </select>
             </div>
-            <button id="start-checklist-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Iniciar Inspección de Salida</button>
+            <button id="start-checklist-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg disabled:bg-gray-500" disabled>Iniciar Inspección de Salida</button>
         `;
         salidaFormContainer.classList.remove("hidden");
+
+        document
+          .getElementById("take-evidence-photo-btn")
+          .addEventListener("click", openGeneralCamera);
         document
           .getElementById("start-checklist-btn")
           .addEventListener("click", startChecklist);
+        document
+          .getElementById("conductor-select")
+          .addEventListener("change", checkCanProceed);
       }
 
       function renderChecklistItem(itemIndex) {
@@ -182,10 +206,10 @@
                     <textarea id="obs-${
                       item.key
                     }" rows="2" class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"></textarea>
-                    <button onclick="openFailureCamera()" class="w-full mt-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg">Tomar Foto de Evidencia</button>
+                    <button onclick="openFailureCamera()" class="w-full mt-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg">Tomar Foto de Falla</button>
                     <p id="foto-status-${
                       item.key
-                    }" class="text-green-400 mt-2 hidden">✓ Foto guardada</p>
+                    }" class="text-green-400 mt-2 hidden">✓ Foto de falla guardada</p>
                     <button onclick="renderChecklistItem(${
                       itemIndex + 1
                     })" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Siguiente</button>
@@ -207,7 +231,7 @@
         `;
       }
 
-      // --- LOGIC FUNCTIONS ---
+      // --- LÓGICA DE PROCESO ---
       function onScanSuccess(decodedText, decodedResult) {
         if (isProcessing) return;
         isProcessing = true;
@@ -226,10 +250,8 @@
             currentAction = data.action;
             instructionText.textContent = `Vehículo: ${data.vehiculo.numero_economico}`;
             if (data.action === "salida") {
-              mainTitle.textContent = "Registro de Salida";
               renderSalidaForm(data.operadores);
             } else {
-              // Lógica para entrada (simplificada por ahora)
               submitEntrada();
             }
           });
@@ -237,10 +259,6 @@
 
       function startChecklist() {
         const conductor = document.getElementById("conductor-select").value;
-        if (!conductor) {
-          showMessage("Debe seleccionar un conductor.", true);
-          return;
-        }
         checklistData.conductor_asignado = conductor;
         salidaFormContainer.classList.add("hidden");
         checklistContainer.classList.remove("hidden");
@@ -258,37 +276,62 @@
         }
       };
 
-      window.openFailureCamera = () => {
+      function openCamera(onCapture) {
         cameraModal.classList.remove("hidden");
         navigator.mediaDevices
           .getUserMedia({ video: { facingMode: "environment" } })
           .then((stream) => {
             cameraPreview.srcObject = stream;
           });
-      };
 
-      captureFailureBtn.onclick = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = cameraPreview.videoWidth;
-        canvas.height = cameraPreview.videoHeight;
-        canvas.getContext("2d").drawImage(cameraPreview, 0, 0);
-        const dataUrl = canvas.toDataURL("image/jpeg");
+        const captureHandler = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = cameraPreview.videoWidth;
+          canvas.height = cameraPreview.videoHeight;
+          canvas.getContext("2d").drawImage(cameraPreview, 0, 0);
+          const dataUrl = canvas.toDataURL("image/jpeg");
 
-        checklistData[currentChecklistItem].foto = dataUrl;
-        checklistData[currentChecklistItem].obs = document.getElementById(
-          `obs-${currentChecklistItem}`
-        ).value;
+          onCapture(dataUrl); // Llama a la función callback con la foto
 
-        cameraPreview.srcObject.getTracks().forEach((track) => track.stop());
+          closeCamera();
+          captureBtn.removeEventListener("click", captureHandler);
+        };
+
+        captureBtn.addEventListener("click", captureHandler);
+      }
+
+      function closeCamera() {
+        if (cameraPreview.srcObject) {
+          cameraPreview.srcObject.getTracks().forEach((track) => track.stop());
+        }
         cameraModal.classList.add("hidden");
-        document
-          .getElementById(`foto-status-${currentChecklistItem}`)
-          .classList.remove("hidden");
-      };
+      }
 
-      cancelCaptureBtn.onclick = () => {
-        cameraPreview.srcObject.getTracks().forEach((track) => track.stop());
-        cameraModal.classList.add("hidden");
+      cancelCaptureBtn.addEventListener("click", closeCamera);
+
+      function openGeneralCamera() {
+        captureBtn.textContent = "Capturar Evidencia";
+        openCamera((photoData) => {
+          departurePhotoData = photoData;
+          document
+            .getElementById("photo-status-general")
+            .classList.remove("hidden");
+          document.getElementById("take-evidence-photo-btn").disabled = true;
+          checkCanProceed();
+        });
+      }
+
+      window.openFailureCamera = () => {
+        captureBtn.textContent = "Capturar Falla";
+        openCamera((photoData) => {
+          checklistData[currentChecklistItem].foto = photoData;
+          checklistData[currentChecklistItem].obs = document.getElementById(
+            `obs-${currentChecklistItem}`
+          ).value;
+          document
+            .getElementById(`foto-status-${currentChecklistItem}`)
+            .classList.remove("hidden");
+        });
       };
 
       function submitSalida() {
@@ -297,11 +340,12 @@
         const payload = {
           qr_id: currentQrId,
           conductor_asignado: checklistData.conductor_asignado,
+          photo: departurePhotoData, // <-- Se añade la foto de evidencia general
           checklist: {
-            llantas: checklistData.llantas,
-            luces: checklistData.luces,
-            niveles: checklistData.niveles,
-            carroceria: checklistData.carroceria,
+            llantas: checklistData.llantas || { estado: "ok" },
+            luces: checklistData.luces || { estado: "ok" },
+            niveles: checklistData.niveles || { estado: "ok" },
+            carroceria: checklistData.carroceria || { estado: "ok" },
             generales: checklistData.generales,
           },
         };
@@ -341,7 +385,7 @@
           });
       }
 
-      // --- INITIALIZATION ---
+      // --- INICIALIZACIÓN ---
       document.addEventListener("DOMContentLoaded", () => {
         html5QrCode = new Html5Qrcode("reader");
         html5QrCode
