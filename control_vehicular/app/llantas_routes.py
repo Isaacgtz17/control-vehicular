@@ -5,6 +5,7 @@ from .models import Llanta, Vehiculo, PosicionEje, Montaje
 from . import db
 from .utils import admin_required, log_action
 from datetime import datetime
+import json
 
 llantas_bp = Blueprint('llantas', __name__, url_prefix='/llantas')
 
@@ -12,9 +13,23 @@ llantas_bp = Blueprint('llantas', __name__, url_prefix='/llantas')
 @login_required
 @admin_required
 def inventario():
-    """Muestra el inventario de todas las llantas."""
-    llantas = Llanta.query.order_by(Llanta.marca, Llanta.modelo).all()
-    return render_template('llantas_inventario.html', llantas=llantas)
+    """Muestra el inventario de todas las llantas con su ubicación actual si están montadas."""
+    query = db.session.query(
+        Llanta, 
+        Vehiculo.numero_economico,
+        PosicionEje.codigo
+    ).outerjoin(
+        Montaje, 
+        db.and_(Llanta.id == Montaje.llanta_id, Montaje.fecha_desmontaje == None)
+    ).outerjoin(
+        Vehiculo, Montaje.vehiculo_id == Vehiculo.id
+    ).outerjoin(
+        PosicionEje, Montaje.posicion_id == PosicionEje.id
+    ).order_by(Llanta.marca, Llanta.modelo)
+    
+    llantas_con_ubicacion = query.all()
+    
+    return render_template('llantas_inventario.html', llantas_con_ubicacion=llantas_con_ubicacion)
 
 @llantas_bp.route('/nueva', methods=['GET', 'POST'])
 @login_required
@@ -52,15 +67,11 @@ def anadir_llanta():
 @login_required
 @admin_required
 def gestionar_vehiculo(vehiculo_id):
-    """Página principal para gestionar las llantas de un vehículo específico."""
+    """Página 2D para gestionar las llantas de un vehículo específico."""
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     posiciones = PosicionEje.query.all()
     llantas_bodega = Llanta.query.filter_by(status='En Bodega').all()
-    
-    # Obtener los montajes activos para este vehículo
     montajes_activos = Montaje.query.filter_by(vehiculo_id=vehiculo.id, fecha_desmontaje=None).all()
-    
-    # Crear un diccionario para fácil acceso en la plantilla: {posicion_id: montaje_obj}
     mapa_posiciones = {montaje.posicion_id: montaje for montaje in montajes_activos}
 
     return render_template('vehiculo_llantas.html', 
@@ -68,6 +79,43 @@ def gestionar_vehiculo(vehiculo_id):
                            posiciones=posiciones, 
                            llantas_bodega=llantas_bodega,
                            mapa_posiciones=mapa_posiciones)
+
+@llantas_bp.route('/vehiculo/<int:vehiculo_id>/3d')
+@login_required
+@admin_required
+def vista_3d(vehiculo_id):
+    """Página 3D para la gestión interactiva de llantas."""
+    vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
+    montajes_activos = Montaje.query.filter_by(vehiculo_id=vehiculo.id, fecha_desmontaje=None).all()
+    llantas_bodega = Llanta.query.filter_by(status='En Bodega').all()
+    posiciones = PosicionEje.query.all()
+    
+    llantas_data = {}
+    for montaje in montajes_activos:
+        llantas_data[montaje.posicion.codigo] = {
+            'montaje_id': montaje.id,
+            'dot_serial': montaje.llanta.dot_serial,
+            'marca': montaje.llanta.marca,
+            'modelo': montaje.llanta.modelo,
+            'medida': montaje.llanta.medida,
+            'km_montaje': montaje.km_montaje,
+            'fecha_montaje': montaje.fecha_montaje.strftime('%Y-%m-%d'),
+            'km_acumulado': montaje.llanta.kilometraje_acumulado
+        }
+    
+    posiciones_data = {pos.codigo: pos.id for pos in posiciones}
+    
+    llantas_data_json = json.dumps(llantas_data)
+    posiciones_data_json = json.dumps(posiciones_data)
+
+    return render_template(
+        'vehiculo_3d.html', 
+        vehiculo=vehiculo, 
+        llantas_data_json=llantas_data_json,
+        posiciones_data_json=posiciones_data_json,
+        llantas_bodega=llantas_bodega
+    )
+
 
 @llantas_bp.route('/montar', methods=['POST'])
 @login_required
@@ -85,15 +133,12 @@ def montar_llanta():
         if llanta.status != 'En Bodega':
             return jsonify({'status': 'error', 'message': 'La llanta seleccionada no está en bodega.'}), 400
 
-        # Crear nuevo montaje
         nuevo_montaje = Montaje(
             vehiculo_id=vehiculo_id,
             llanta_id=llanta_id,
             posicion_id=posicion_id,
             km_montaje=km_actual
         )
-        
-        # Actualizar estado de la llanta
         llanta.status = 'Montada'
         
         db.session.add(nuevo_montaje)
@@ -122,12 +167,10 @@ def desmontar_llanta():
         if montaje.fecha_desmontaje is not None:
              return jsonify({'status': 'error', 'message': 'Esta llanta ya fue desmontada.'}), 400
 
-        # Actualizar el registro de montaje
         montaje.fecha_desmontaje = datetime.utcnow()
         montaje.km_desmontaje = km_actual
         montaje.motivo_desmontaje = motivo
         
-        # Actualizar la llanta
         llanta = montaje.llanta
         km_recorridos = km_actual - montaje.km_montaje
         if km_recorridos > 0:

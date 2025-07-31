@@ -1,0 +1,469 @@
+{% extends "base_admin.html" %} {% block title %}Vista 3D de {{
+vehiculo.numero_economico }}{% endblock %} {% block content %}
+<div class="bg-white p-6 rounded-lg shadow-md mb-8">
+  <div class="flex justify-between items-center mb-4 border-b pb-4">
+    <div>
+      <h1 class="text-2xl font-semibold">Gestor Interactivo de Llantas (3D)</h1>
+      <p class="text-gray-600">
+        {{ vehiculo.numero_economico }} / {{ vehiculo.placa }}
+      </p>
+    </div>
+    <a href="{{ url_for('main.index') }}" class="text-blue-600 hover:underline"
+      >&larr; Volver al Dashboard</a
+    >
+  </div>
+
+  <div class="relative" style="height: 60vh">
+    <!-- Contenedor para la escena 3D -->
+    <div
+      id="canvas-container"
+      class="absolute top-0 left-0 w-full h-full bg-gray-200 rounded-lg cursor-pointer"
+    ></div>
+
+    <!-- Panel de Información -->
+    <div
+      id="info-panel"
+      class="absolute top-4 right-4 bg-white bg-opacity-80 p-4 rounded-lg shadow-lg w-72 pointer-events-none"
+    >
+      <h3 class="font-bold border-b pb-2 mb-2">Información</h3>
+      <div id="info-content">
+        <p><strong>Vehículo:</strong> {{ vehiculo.numero_economico }}</p>
+        <p><strong>Placa:</strong> {{ vehiculo.placa }}</p>
+        <hr class="my-2" />
+        <p class="text-gray-500 text-sm">
+          Pasa el cursor sobre una llanta para ver sus detalles. Haz clic para
+          montar/desmontar.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modals -->
+<div
+  id="montarModal"
+  class="fixed inset-0 bg-gray-800 bg-opacity-75 h-full w-full hidden z-50 flex items-center justify-center"
+>
+  <div
+    class="relative p-5 border w-full max-w-md shadow-lg rounded-md bg-white"
+  >
+    <h3 class="text-lg font-medium text-gray-900 mb-4">
+      Montar Llanta en <span id="montarPosicionCodigo" class="font-bold"></span>
+    </h3>
+    <form id="montarForm">
+      <input type="hidden" name="posicion_id" id="montarPosicionId" />
+      <div class="mb-4">
+        <label
+          for="montarLlantaId"
+          class="block text-sm font-medium text-gray-700"
+          >Llanta disponible en bodega</label
+        >
+        <select
+          name="llanta_id"
+          id="montarLlantaId"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+        >
+          <option value="">-- Seleccione una llanta --</option>
+          {% for llanta in llantas_bodega %}
+          <option value="{{ llanta.id }}">
+            {{ llanta.dot_serial }} ({{ llanta.marca }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-4">
+        <label
+          for="montarKmActual"
+          class="block text-sm font-medium text-gray-700"
+          >Kilometraje actual del vehículo</label
+        >
+        <input
+          type="number"
+          name="km_actual"
+          id="montarKmActual"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md shadow-sm"
+        />
+      </div>
+      <div class="flex justify-end space-x-2">
+        <button
+          type="button"
+          onclick="closeModal('montarModal')"
+          class="bg-gray-200 text-gray-800 py-2 px-4 rounded hover:bg-gray-300"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+        >
+          Confirmar Montaje
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div
+  id="desmontarModal"
+  class="fixed inset-0 bg-gray-800 bg-opacity-75 h-full w-full hidden z-50 flex items-center justify-center"
+>
+  <div
+    class="relative p-5 border w-full max-w-md shadow-lg rounded-md bg-white"
+  >
+    <h3 class="text-lg font-medium text-gray-900 mb-4">
+      Desmontar Llanta
+      <span id="desmontarLlantaSerial" class="font-mono text-sm"></span> de
+      <span id="desmontarPosicionCodigo" class="font-bold"></span>
+    </h3>
+    <form id="desmontarForm">
+      <input type="hidden" name="montaje_id" id="desmontarMontajeId" />
+      <div class="mb-4">
+        <label
+          for="desmontarKmActual"
+          class="block text-sm font-medium text-gray-700"
+          >Kilometraje actual del vehículo</label
+        >
+        <input
+          type="number"
+          name="km_actual"
+          id="desmontarKmActual"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md shadow-sm"
+        />
+      </div>
+      <div class="mb-4">
+        <label
+          for="desmontarMotivo"
+          class="block text-sm font-medium text-gray-700"
+          >Motivo del desmontaje</label
+        >
+        <textarea
+          name="motivo"
+          id="desmontarMotivo"
+          rows="3"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md shadow-sm"
+        ></textarea>
+      </div>
+      <div class="mb-4">
+        <label
+          for="desmontarNuevoStatus"
+          class="block text-sm font-medium text-gray-700"
+          >Nuevo estado de la llanta</label
+        >
+        <select
+          name="nuevo_status"
+          id="desmontarNuevoStatus"
+          required
+          class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm"
+        >
+          <option value="En Bodega">Enviar a Bodega</option>
+          <option value="Renovación">Enviar a Renovación</option>
+          <option value="Desechada">Desechar</option>
+        </select>
+      </div>
+      <div class="flex justify-end space-x-2">
+        <button
+          type="button"
+          onclick="closeModal('desmontarModal')"
+          class="bg-gray-200 text-gray-800 py-2 px-4 rounded hover:bg-gray-300"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700"
+        >
+          Confirmar Desmontaje
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %} {% block scripts %} {{ super() }}
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+    }
+  }
+</script>
+
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  // --- Variables Globales ---
+  let scene, camera, renderer, controls;
+  let raycaster, mouse, hoveredObject = null;
+  const interactivePositions = [];
+  const canvasContainer = document.getElementById('canvas-container');
+  const infoContent = document.getElementById('info-content');
+
+  // --- Datos desde el backend ---
+  const llantasData = JSON.parse('{{ llantas_data_json | safe }}');
+  const posicionesData = JSON.parse('{{ posiciones_data_json | safe }}');
+
+  function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xdddddd);
+      scene.fog = new THREE.Fog(0xdddddd, 20, 100);
+      camera = new THREE.PerspectiveCamera(60, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+      camera.position.set(8, 6, 12);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      canvasContainer.appendChild(renderer.domElement);
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+      hemiLight.position.set(0, 20, 0);
+      scene.add(hemiLight);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+      dirLight.position.set(10, 10, 5);
+      dirLight.castShadow = true;
+      scene.add(dirLight);
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshPhongMaterial({ color: 0x999999, depthWrite: false }));
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      createTruck();
+
+      raycaster = new THREE.Raycaster();
+      mouse = new THREE.Vector2();
+      window.addEventListener('resize', onWindowResize);
+      canvasContainer.addEventListener('mousemove', onMouseMove);
+      canvasContainer.addEventListener('click', onClick);
+
+      animate();
+  }
+
+  function createTruck() {
+      const truckGroup = new THREE.Group();
+      const redMaterial = new THREE.MeshStandardMaterial({ color: 0xc41e3a });
+      const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+      const glassMaterial = new THREE.MeshPhysicalMaterial({ color: 0x6699cc, transmission: 0.9, roughness: 0.1 });
+
+      const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.8, 10), darkMaterial);
+      chassis.position.y = 0.8;
+      chassis.castShadow = true;
+      truckGroup.add(chassis);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.2, 2.8), redMaterial);
+      cabin.position.set(0, 2.3, 3.6);
+      cabin.castShadow = true;
+      truckGroup.add(cabin);
+      const windshield = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1), glassMaterial);
+      windshield.position.set(0, 2.5, 5.01);
+      truckGroup.add(windshield);
+
+      const wheelPositions = [
+          { codigo: 'DI', x: -1.5, y: 0.7, z: 4.5 }, { codigo: 'DD', x: 1.5, y: 0.7, z: 4.5 },
+          { codigo: 'T1LI', x: -1.75, y: 0.7, z: 0 }, { codigo: 'T1LE', x: -1.25, y: 0.7, z: 0 },
+          { codigo: 'T1RE', x: 1.25, y: 0.7, z: 0 }, { codigo: 'T1RI', x: 1.75, y: 0.7, z: 0 },
+          { codigo: 'T2LI', x: -1.75, y: 0.7, z: -2 }, { codigo: 'T2LE', x: -1.25, y: 0.7, z: -2 },
+          { codigo: 'T2RE', x: 1.25, y: 0.7, z: -2 }, { codigo: 'T2RI', x: 1.75, y: 0.7, z: -2 },
+      ];
+
+      wheelPositions.forEach(pos => {
+          const hasTire = llantasData[pos.codigo];
+          let positionObject = hasTire ? createWheel(pos) : createHub(pos);
+          interactivePositions.push(positionObject);
+          truckGroup.add(positionObject);
+      });
+
+      scene.add(truckGroup);
+  }
+
+  function createWheel(posData) {
+      const wheelGroup = new THREE.Group();
+      const tireMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+      const rimMaterial = new THREE.MeshStandardMaterial({ color: 0xbbbbbb, metalness: 0.5, roughness: 0.2 });
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.5, 32), tireMaterial);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.55, 16), rimMaterial);
+      tire.castShadow = true;
+      wheelGroup.add(tire);
+      wheelGroup.add(rim);
+      wheelGroup.rotation.z = Math.PI / 2;
+      wheelGroup.position.set(posData.x, posData.y, posData.z);
+      wheelGroup.userData = {
+          isPosition: true, isWheel: true, posicionCodigo: posData.codigo,
+          llantaInfo: llantasData[posData.codigo] || null,
+          originalMaterial: tireMaterial,
+          highlightMaterial: new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xaaaa00 })
+      };
+      return wheelGroup;
+  }
+
+  function createHub(posData) {
+      const hubGroup = new THREE.Group();
+      const hubMaterial = new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.8, roughness: 0.4 });
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.3, 16), hubMaterial);
+      hubGroup.add(hub);
+      hubGroup.rotation.z = Math.PI / 2;
+      hubGroup.position.set(posData.x, posData.y, posData.z);
+      hubGroup.userData = {
+          isPosition: true, isWheel: false, posicionCodigo: posData.codigo,
+          llantaInfo: null,
+          originalMaterial: hubMaterial,
+          highlightMaterial: new THREE.MeshStandardMaterial({ color: 0x00aaff, emissive: 0x0055aa })
+      };
+      return hubGroup;
+  }
+
+  function onWindowResize() {
+      camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+  }
+
+  function onMouseMove(event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  }
+
+  function onClick() {
+      if (hoveredObject) {
+          const data = hoveredObject.userData;
+          if (data.isWheel) {
+              openDesmontarModal(data.llantaInfo.montaje_id, data.posicionCodigo, data.llantaInfo.dot_serial);
+          } else {
+              openMontarModal(posicionesData[data.posicionCodigo], data.posicionCodigo);
+          }
+      }
+  }
+
+  function checkIntersections() {
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(interactivePositions, true);
+
+      let currentObject = null;
+      if (intersects.length > 0) {
+          currentObject = intersects[0].object;
+          while (currentObject.parent && !currentObject.userData.isPosition) {
+              currentObject = currentObject.parent;
+          }
+      }
+
+      if (hoveredObject !== currentObject) {
+          if (hoveredObject) {
+              hoveredObject.children[0].material = hoveredObject.userData.originalMaterial;
+          }
+          hoveredObject = currentObject;
+          if (hoveredObject) {
+              hoveredObject.children[0].material = hoveredObject.userData.highlightMaterial;
+          }
+          updateInfoPanel(hoveredObject ? hoveredObject.userData : null);
+      }
+  }
+
+  function updateInfoPanel(data) {
+      if (data && data.isWheel) {
+          const info = data.llantaInfo;
+          infoContent.innerHTML = `
+              <p><strong>Posición:</strong> ${data.posicionCodigo}</p>
+              <hr class="my-2">
+              <p class="font-mono text-sm"><strong>DOT:</strong> ${info.dot_serial}</p>
+              <p><strong>Marca:</strong> ${info.marca}</p>
+              <p><strong>Modelo:</strong> ${info.modelo}</p>
+              <p><strong>Montaje:</strong> ${info.fecha_montaje}</p>
+          `;
+      } else if (data && !data.isWheel) {
+          infoContent.innerHTML = `
+              <p><strong>Posición:</strong> ${data.posicionCodigo}</p>
+              <hr class="my-2">
+              <p class="text-red-600 font-bold">Posición Vacante</p>
+          `;
+      } else {
+          infoContent.innerHTML = `
+              <p><strong>Vehículo:</strong> {{ vehiculo.numero_economico }}</p>
+              <p><strong>Placa:</strong> {{ vehiculo.placa }}</p>
+              <hr class="my-2">
+              <p class="text-gray-500 text-sm">Pasa el cursor sobre una llanta para ver sus detalles.</p>
+          `;
+      }
+  }
+
+  function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      checkIntersections();
+      renderer.render(scene, camera);
+  }
+
+  // --- Lógica de Modales ---
+  window.openMontarModal = function(posicionId, posicionCodigo) {
+      document.getElementById('montarPosicionId').value = posicionId;
+      document.getElementById('montarPosicionCodigo').textContent = posicionCodigo;
+      document.getElementById('montarModal').classList.remove('hidden');
+  }
+
+  window.openDesmontarModal = function(montajeId, posicionCodigo, llantaSerial) {
+      document.getElementById('desmontarMontajeId').value = montajeId;
+      document.getElementById('desmontarPosicionCodigo').textContent = posicionCodigo;
+      document.getElementById('desmontarLlantaSerial').textContent = llantaSerial;
+      document.getElementById('desmontarModal').classList.remove('hidden');
+  }
+
+  window.closeModal = function(modalId) {
+      document.getElementById(modalId).classList.add('hidden');
+  }
+
+  document.getElementById('montarForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = {
+          vehiculo_id: {{ vehiculo.id }},
+          posicion_id: formData.get('posicion_id'),
+          llanta_id: formData.get('llanta_id'),
+          km_actual: formData.get('km_actual')
+      };
+
+      fetch("{{ url_for('llantas.montar_llanta') }}", {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(data)
+      })
+      .then(res => res.json())
+      .then(result => {
+          if (result.status === 'success') {
+              window.location.reload();
+          } else {
+              alert('Error: ' + result.message);
+          }
+      });
+  });
+
+  document.getElementById('desmontarForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = {
+          montaje_id: formData.get('montaje_id'),
+          km_actual: formData.get('km_actual'),
+          motivo: formData.get('motivo'),
+          nuevo_status: formData.get('nuevo_status')
+      };
+
+      fetch("{{ url_for('llantas.desmontar_llanta') }}", {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(data)
+      })
+      .then(res => res.json())
+      .then(result => {
+          if (result.status === 'success') {
+              window.location.reload();
+          } else {
+              alert('Error: ' + result.message);
+          }
+      });
+  });
+
+  init();
+</script>
+{% endblock %}

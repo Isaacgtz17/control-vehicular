@@ -39,7 +39,8 @@ endblock %} {% block content %}
         </tr>
       </thead>
       <tbody class="text-gray-700">
-        {% for llanta in llantas %}
+        {% for llanta, numero_economico, posicion_codigo in
+        llantas_con_ubicacion %}
         <tr class="border-b hover:bg-gray-50">
           <td class="py-3 px-4 font-mono text-xs">{{ llanta.dot_serial }}</td>
           <td class="py-3 px-4">{{ llanta.marca }} {{ llanta.modelo }}</td>
@@ -62,8 +63,11 @@ endblock %} {% block content %}
             >
             {% endif %}
           </td>
-          <td class="py-3 px-4 text-center">
-            {# Aquí mostraremos el vehículo y la posición si está montada #} -
+          <td class="py-3 px-4 text-center text-xs">
+            {% if llanta.status == 'Montada' and numero_economico %}
+            <strong>{{ numero_economico }}</strong><br />
+            <span class="text-gray-500">{{ posicion_codigo }}</span>
+            {% else %} - {% endif %}
           </td>
           <td class="py-3 px-4 text-right font-semibold">
             {{ "%.1f"|format(llanta.kilometraje_acumulado) }} km
