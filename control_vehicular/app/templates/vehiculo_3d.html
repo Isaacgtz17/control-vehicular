@@ -206,6 +206,7 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
   // --- Datos desde el backend ---
   const llantasData = JSON.parse('{{ llantas_data_json | safe }}');
   const posicionesData = JSON.parse('{{ posiciones_data_json | safe }}');
+  const numeroEconomico = '{{ vehiculo.numero_economico }}';
 
   function init() {
       scene = new THREE.Scene();
@@ -243,23 +244,77 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
       animate();
   }
 
+  // --- NUEVA FUNCIÓN PARA CREAR TEXTURAS DE TEXTO ---
+  function createTextTexture(text, width, height, fontSize) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+
+      context.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      context.fillRect(0, 0, width, height);
+
+      context.font = `Bold ${fontSize}px Arial`;
+      context.fillStyle = 'black';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(text, width / 2, height / 2);
+
+      return new THREE.CanvasTexture(canvas);
+  }
+
   function createTruck() {
       const truckGroup = new THREE.Group();
-      const redMaterial = new THREE.MeshStandardMaterial({ color: 0xc41e3a });
-      const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+      const redMaterial = new THREE.MeshStandardMaterial({ color: 0xc41e3a, roughness: 0.4, metalness: 0.2 });
+      const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });
       const glassMaterial = new THREE.MeshPhysicalMaterial({ color: 0x6699cc, transmission: 0.9, roughness: 0.1 });
+      const chromeMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 1.0, roughness: 0.1 });
 
       const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.8, 10), darkMaterial);
       chassis.position.y = 0.8;
       chassis.castShadow = true;
       truckGroup.add(chassis);
+
       const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.2, 2.8), redMaterial);
       cabin.position.set(0, 2.3, 3.6);
       cabin.castShadow = true;
       truckGroup.add(cabin);
+
       const windshield = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1), glassMaterial);
       windshield.position.set(0, 2.5, 5.01);
       truckGroup.add(windshield);
+
+      // --- AÑADIR LOGO Y NÚMERO ECONÓMICO ---
+      const textureLoader = new THREE.TextureLoader();
+      const logoTexture = textureLoader.load("{{ url_for('static', filename='images/logo.png') }}");
+      const logoMaterial = new THREE.MeshBasicMaterial({ map: logoTexture, transparent: true });
+
+      // Logo Izquierdo
+      const logoLeft = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), logoMaterial);
+      logoLeft.position.set(-1.26, 2.3, 3.8);
+      logoLeft.rotation.y = -Math.PI / 2;
+      truckGroup.add(logoLeft);
+
+      // Logo Derecho
+      const logoRight = logoLeft.clone();
+      logoRight.position.set(1.26, 2.3, 3.8);
+      logoRight.rotation.y = Math.PI / 2;
+      truckGroup.add(logoRight);
+
+      const numberTexture = createTextTexture(numeroEconomico, 256, 128, 48);
+      const numberMaterial = new THREE.MeshBasicMaterial({ map: numberTexture, transparent: true });
+
+      // Número Izquierdo
+      const numberLeft = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), numberMaterial);
+      numberLeft.position.set(-1.26, 3.0, 2.5);
+      numberLeft.rotation.y = -Math.PI / 2;
+      truckGroup.add(numberLeft);
+
+      // Número Derecho
+      const numberRight = numberLeft.clone();
+      numberRight.position.set(1.26, 3.0, 2.5);
+      numberRight.rotation.y = Math.PI / 2;
+      truckGroup.add(numberRight);
 
       const wheelPositions = [
           { codigo: 'DI', x: -1.5, y: 0.7, z: 4.5 }, { codigo: 'DD', x: 1.5, y: 0.7, z: 4.5 },
@@ -381,7 +436,7 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
           `;
       } else {
           infoContent.innerHTML = `
-              <p><strong>Vehículo:</strong> {{ vehiculo.numero_economico }}</p>
+              <p><strong>Vehículo:</strong> ${numeroEconomico}</p>
               <p><strong>Placa:</strong> {{ vehiculo.placa }}</p>
               <hr class="my-2">
               <p class="text-gray-500 text-sm">Pasa el cursor sobre una llanta para ver sus detalles.</p>
