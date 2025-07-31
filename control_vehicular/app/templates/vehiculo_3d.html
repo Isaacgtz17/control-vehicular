@@ -195,18 +195,18 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
 <script type="module">
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
   // --- Variables Globales ---
   let scene, camera, renderer, controls;
   let raycaster, mouse, hoveredObject = null;
-  const interactivePositions = [];
+  const interactiveWheels = [];
   const canvasContainer = document.getElementById('canvas-container');
   const infoContent = document.getElementById('info-content');
 
   // --- Datos desde el backend ---
   const llantasData = JSON.parse('{{ llantas_data_json | safe }}');
   const posicionesData = JSON.parse('{{ posiciones_data_json | safe }}');
-  const numeroEconomico = '{{ vehiculo.numero_economico }}';
 
   function init() {
       scene = new THREE.Scene();
@@ -233,7 +233,7 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
       ground.receiveShadow = true;
       scene.add(ground);
 
-      createTruck();
+      loadModel();
 
       raycaster = new THREE.Raycaster();
       mouse = new THREE.Vector2();
@@ -244,130 +244,43 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
       animate();
   }
 
-  // --- NUEVA FUNCIÓN PARA CREAR TEXTURAS DE TEXTO ---
-  function createTextTexture(text, width, height, fontSize) {
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext('2d');
+  function loadModel() {
+      const loader = new GLTFLoader();
+      const modelUrl = "{{ url_for('static', filename='models/tractocamion.glb') }}";
 
-      context.fillStyle = 'rgba(255, 255, 255, 0.8)';
-      context.fillRect(0, 0, width, height);
+      loader.load(modelUrl, (gltf) => {
+          const model = gltf.scene;
+          model.scale.set(1, 1, 1); // Ajusta la escala si es necesario
+          model.position.set(0, 0, 0);
 
-      context.font = `Bold ${fontSize}px Arial`;
-      context.fillStyle = 'black';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillText(text, width / 2, height / 2);
+          const wheelNames = [
+              'Llanta_DI', 'Llanta_DD', 'Llanta_T1LI', 'Llanta_T1LE',
+              'Llanta_T1RI', 'Llanta_T1RE', 'Llanta_T2LI', 'Llanta_T2LE',
+              'Llanta_T2RI', 'Llanta_T2RE'
+          ];
 
-      return new THREE.CanvasTexture(canvas);
-  }
+          model.traverse((object) => {
+              if (object.isMesh) {
+                  object.castShadow = true;
 
-  function createTruck() {
-      const truckGroup = new THREE.Group();
-      const redMaterial = new THREE.MeshStandardMaterial({ color: 0xc41e3a, roughness: 0.4, metalness: 0.2 });
-      const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });
-      const glassMaterial = new THREE.MeshPhysicalMaterial({ color: 0x6699cc, transmission: 0.9, roughness: 0.1 });
-      const chromeMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 1.0, roughness: 0.1 });
-
-      const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.8, 10), darkMaterial);
-      chassis.position.y = 0.8;
-      chassis.castShadow = true;
-      truckGroup.add(chassis);
-
-      const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.2, 2.8), redMaterial);
-      cabin.position.set(0, 2.3, 3.6);
-      cabin.castShadow = true;
-      truckGroup.add(cabin);
-
-      const windshield = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1), glassMaterial);
-      windshield.position.set(0, 2.5, 5.01);
-      truckGroup.add(windshield);
-
-      // --- AÑADIR LOGO Y NÚMERO ECONÓMICO ---
-      const textureLoader = new THREE.TextureLoader();
-      const logoTexture = textureLoader.load("{{ url_for('static', filename='images/logo.png') }}");
-      const logoMaterial = new THREE.MeshBasicMaterial({ map: logoTexture, transparent: true });
-
-      // Logo Izquierdo
-      const logoLeft = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), logoMaterial);
-      logoLeft.position.set(-1.26, 2.3, 3.8);
-      logoLeft.rotation.y = -Math.PI / 2;
-      truckGroup.add(logoLeft);
-
-      // Logo Derecho
-      const logoRight = logoLeft.clone();
-      logoRight.position.set(1.26, 2.3, 3.8);
-      logoRight.rotation.y = Math.PI / 2;
-      truckGroup.add(logoRight);
-
-      const numberTexture = createTextTexture(numeroEconomico, 256, 128, 48);
-      const numberMaterial = new THREE.MeshBasicMaterial({ map: numberTexture, transparent: true });
-
-      // Número Izquierdo
-      const numberLeft = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), numberMaterial);
-      numberLeft.position.set(-1.26, 3.0, 2.5);
-      numberLeft.rotation.y = -Math.PI / 2;
-      truckGroup.add(numberLeft);
-
-      // Número Derecho
-      const numberRight = numberLeft.clone();
-      numberRight.position.set(1.26, 3.0, 2.5);
-      numberRight.rotation.y = Math.PI / 2;
-      truckGroup.add(numberRight);
-
-      const wheelPositions = [
-          { codigo: 'DI', x: -1.5, y: 0.7, z: 4.5 }, { codigo: 'DD', x: 1.5, y: 0.7, z: 4.5 },
-          { codigo: 'T1LI', x: -1.75, y: 0.7, z: 0 }, { codigo: 'T1LE', x: -1.25, y: 0.7, z: 0 },
-          { codigo: 'T1RE', x: 1.25, y: 0.7, z: 0 }, { codigo: 'T1RI', x: 1.75, y: 0.7, z: 0 },
-          { codigo: 'T2LI', x: -1.75, y: 0.7, z: -2 }, { codigo: 'T2LE', x: -1.25, y: 0.7, z: -2 },
-          { codigo: 'T2RE', x: 1.25, y: 0.7, z: -2 }, { codigo: 'T2RI', x: 1.75, y: 0.7, z: -2 },
-      ];
-
-      wheelPositions.forEach(pos => {
-          const hasTire = llantasData[pos.codigo];
-          let positionObject = hasTire ? createWheel(pos) : createHub(pos);
-          interactivePositions.push(positionObject);
-          truckGroup.add(positionObject);
+                  if (wheelNames.includes(object.name)) {
+                      const codigo = object.name.split('_')[1];
+                      object.userData = {
+                          isWheel: true,
+                          posicionCodigo: codigo,
+                          llantaInfo: llantasData[codigo] || null,
+                          originalMaterial: object.material,
+                          highlightMaterial: new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xaaaa00 })
+                      };
+                      interactiveWheels.push(object);
+                  }
+              }
+          });
+          scene.add(model);
+      }, undefined, (error) => {
+          console.error('An error happened while loading the model:', error);
+          infoContent.innerHTML = '<p class="text-red-600"><strong>Error:</strong> No se pudo cargar el modelo 3D. Asegúrate de que el archivo `tractocamion.glb` existe en `app/static/models/`.</p>';
       });
-
-      scene.add(truckGroup);
-  }
-
-  function createWheel(posData) {
-      const wheelGroup = new THREE.Group();
-      const tireMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
-      const rimMaterial = new THREE.MeshStandardMaterial({ color: 0xbbbbbb, metalness: 0.5, roughness: 0.2 });
-      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.5, 32), tireMaterial);
-      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.55, 16), rimMaterial);
-      tire.castShadow = true;
-      wheelGroup.add(tire);
-      wheelGroup.add(rim);
-      wheelGroup.rotation.z = Math.PI / 2;
-      wheelGroup.position.set(posData.x, posData.y, posData.z);
-      wheelGroup.userData = {
-          isPosition: true, isWheel: true, posicionCodigo: posData.codigo,
-          llantaInfo: llantasData[posData.codigo] || null,
-          originalMaterial: tireMaterial,
-          highlightMaterial: new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xaaaa00 })
-      };
-      return wheelGroup;
-  }
-
-  function createHub(posData) {
-      const hubGroup = new THREE.Group();
-      const hubMaterial = new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.8, roughness: 0.4 });
-      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.3, 16), hubMaterial);
-      hubGroup.add(hub);
-      hubGroup.rotation.z = Math.PI / 2;
-      hubGroup.position.set(posData.x, posData.y, posData.z);
-      hubGroup.userData = {
-          isPosition: true, isWheel: false, posicionCodigo: posData.codigo,
-          llantaInfo: null,
-          originalMaterial: hubMaterial,
-          highlightMaterial: new THREE.MeshStandardMaterial({ color: 0x00aaff, emissive: 0x0055aa })
-      };
-      return hubGroup;
   }
 
   function onWindowResize() {
@@ -385,9 +298,9 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
   function onClick() {
       if (hoveredObject) {
           const data = hoveredObject.userData;
-          if (data.isWheel) {
+          if (data.isWheel && data.llantaInfo) {
               openDesmontarModal(data.llantaInfo.montaje_id, data.posicionCodigo, data.llantaInfo.dot_serial);
-          } else {
+          } else if (data.isWheel && !data.llantaInfo) {
               openMontarModal(posicionesData[data.posicionCodigo], data.posicionCodigo);
           }
       }
@@ -395,30 +308,29 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
 
   function checkIntersections() {
       raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(interactivePositions, true);
+      const intersects = raycaster.intersectObjects(interactiveWheels, false);
 
-      let currentObject = null;
       if (intersects.length > 0) {
-          currentObject = intersects[0].object;
-          while (currentObject.parent && !currentObject.userData.isPosition) {
-              currentObject = currentObject.parent;
+          const intersectedObject = intersects[0].object;
+          if (hoveredObject !== intersectedObject) {
+              if (hoveredObject) {
+                  hoveredObject.material = hoveredObject.userData.originalMaterial;
+              }
+              hoveredObject = intersectedObject;
+              hoveredObject.material = hoveredObject.userData.highlightMaterial;
+              updateInfoPanel(hoveredObject.userData);
           }
-      }
-
-      if (hoveredObject !== currentObject) {
+      } else {
           if (hoveredObject) {
-              hoveredObject.children[0].material = hoveredObject.userData.originalMaterial;
+              hoveredObject.material = hoveredObject.userData.originalMaterial;
+              hoveredObject = null;
+              updateInfoPanel(null);
           }
-          hoveredObject = currentObject;
-          if (hoveredObject) {
-              hoveredObject.children[0].material = hoveredObject.userData.highlightMaterial;
-          }
-          updateInfoPanel(hoveredObject ? hoveredObject.userData : null);
       }
   }
 
   function updateInfoPanel(data) {
-      if (data && data.isWheel) {
+      if (data && data.isWheel && data.llantaInfo) {
           const info = data.llantaInfo;
           infoContent.innerHTML = `
               <p><strong>Posición:</strong> ${data.posicionCodigo}</p>
@@ -428,7 +340,7 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
               <p><strong>Modelo:</strong> ${info.modelo}</p>
               <p><strong>Montaje:</strong> ${info.fecha_montaje}</p>
           `;
-      } else if (data && !data.isWheel) {
+      } else if (data && data.isWheel && !data.llantaInfo) {
           infoContent.innerHTML = `
               <p><strong>Posición:</strong> ${data.posicionCodigo}</p>
               <hr class="my-2">
@@ -436,7 +348,7 @@ vehiculo.numero_economico }}{% endblock %} {% block content %}
           `;
       } else {
           infoContent.innerHTML = `
-              <p><strong>Vehículo:</strong> ${numeroEconomico}</p>
+              <p><strong>Vehículo:</strong> {{ vehiculo.numero_economico }}</p>
               <p><strong>Placa:</strong> {{ vehiculo.placa }}</p>
               <hr class="my-2">
               <p class="text-gray-500 text-sm">Pasa el cursor sobre una llanta para ver sus detalles.</p>
