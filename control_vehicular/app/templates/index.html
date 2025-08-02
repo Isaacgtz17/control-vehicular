@@ -100,7 +100,7 @@
           <th class="p-2 border">Fecha y Hora</th>
           <th class="p-2 border">Tipo</th>
           <th class="p-2 border">Placa</th>
-          <th class="p-2 border">Modelo</th>
+          <th class="p-2 border">No. Económico</th>
           <th class="p-2 border">Conductor</th>
           <th class="p-2 border">Foto</th>
         </tr>
@@ -118,7 +118,7 @@
             >{% endif %}
           </td>
           <td class="p-2 border">{{ registro.vehiculo.placa }}</td>
-          <td class="p-2 border">{{ registro.vehiculo.modelo }}</td>
+          <td class="p-2 border">{{ registro.vehiculo.numero_economico }}</td>
           <td class="p-2 border">
             {{ registro.conductor_asignado or registro.vehiculo.conductor }}
           </td>
@@ -498,7 +498,7 @@
                     <td class="p-2 border">${data.new_log.timestamp}</td>
                     <td class="p-2 border"><span class="${tipoClass} font-bold">${data.new_log.tipo}</span></td>
                     <td class="p-2 border">${data.new_log.placa}</td>
-                    <td class="p-2 border">${data.new_log.modelo}</td>
+                    <td class="p-2 border">${data.new_log.numero_economico}</td>
                     <td class="p-2 border">${conductorAsignado}</td>
                     <td class="p-2 border">${photoHtml}</td>
                 `;
