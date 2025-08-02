@@ -1,0 +1,178 @@
+{% extends "base_admin.html" %} {% block title %}Monitoreo de Flota{% endblock
+%} {% block content %}
+<div class="flex flex-col md:flex-row gap-6 h-[85vh]">
+  <!-- Columna Izquierda: Lista de Vehículos -->
+  <div
+    class="w-full md:w-1/3 lg:w-1/4 bg-white p-4 rounded-lg shadow-md flex flex-col"
+  >
+    <h2 class="text-xl font-semibold mb-4 border-b pb-2">Unidades Activas</h2>
+    <input
+      type="text"
+      id="search-vehicle"
+      placeholder="Buscar vehículo..."
+      class="w-full p-2 border rounded-md mb-4"
+    />
+    <div id="vehicle-list" class="overflow-y-auto flex-grow">
+      <!-- La lista de vehículos se generará aquí -->
+      <p class="text-gray-500 text-center mt-8">Cargando unidades...</p>
+    </div>
+  </div>
+
+  <!-- Columna Derecha: Panel de Detalles -->
+  <div class="w-full md:w-2/3 lg:w-3/4 bg-white p-6 rounded-lg shadow-md">
+    <div id="details-panel" class="h-full flex items-center justify-center">
+      <div class="text-center text-gray-500">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="mx-auto h-12 w-12"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="1"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
+        <p class="mt-2 text-lg">
+          Seleccione un vehículo de la lista para ver sus detalles.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %} {{ super() }}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const vehicleListEl = document.getElementById("vehicle-list");
+    const detailsPanelEl = document.getElementById("details-panel");
+    const searchInput = document.getElementById("search-vehicle");
+    let allVehiclesData = [];
+    let selectedVehicleId = null;
+
+    function renderVehicleList(vehicles) {
+      if (vehicles.length === 0) {
+        vehicleListEl.innerHTML =
+          '<p class="text-gray-500 text-center mt-8">No se encontraron unidades.</p>';
+        return;
+      }
+      vehicleListEl.innerHTML = vehicles
+        .map(
+          (v) => `
+            <div class="vehicle-item p-3 mb-2 rounded-md cursor-pointer hover:bg-gray-100 ${
+              v.id === selectedVehicleId
+                ? "bg-blue-100 border-l-4 border-blue-500"
+                : ""
+            }" data-id="${v.id}">
+                <div class="flex items-center justify-between">
+                    <span class="font-semibold">${v.name}</span>
+                    <span class="status-indicator h-3 w-3 rounded-full ${
+                      v.is_driving ? "bg-green-500" : "bg-blue-500"
+                    }" title="${
+            v.is_driving ? "En Movimiento" : "Detenido"
+          }"></span>
+                </div>
+            </div>
+        `
+        )
+        .join("");
+    }
+
+    function renderDetailsPanel(vehicle) {
+      if (!vehicle) {
+        detailsPanelEl.innerHTML = `
+                <div class="text-center text-gray-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                    <p class="mt-2 text-lg">Seleccione un vehículo de la lista para ver sus detalles.</p>
+                </div>`;
+        return;
+      }
+
+      detailsPanelEl.innerHTML = `
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800 mb-2">${vehicle.name}</h1>
+                <p class="text-sm text-gray-500 mb-6">Último reporte: ${vehicle.last_report}</p>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="bg-gray-50 p-4 rounded-lg text-center">
+                        <p class="text-sm text-gray-600">Velocidad Actual</p>
+                        <p class="text-4xl font-bold text-blue-600">${vehicle.speed} <span class="text-lg">km/h</span></p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg text-center">
+                        <p class="text-sm text-gray-600">Odómetro</p>
+                        <p class="text-4xl font-bold text-blue-600">${vehicle.odometer} <span class="text-lg">km</span></p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg text-center">
+                        <p class="text-sm text-gray-600">Nivel de Gasolina</p>
+                        <p class="text-4xl font-bold text-blue-600">${vehicle.fuel_level} <span class="text-lg">%</span></p>
+                    </div>
+                </div>
+
+                <div class="mt-6 bg-gray-50 p-4 rounded-lg">
+                     <h3 class="font-semibold mb-2">Última Ubicación Conocida</h3>
+                     <p><span class="font-medium">Latitud:</span> ${vehicle.latitude}</p>
+                     <p><span class="font-medium">Longitud:</span> ${vehicle.longitude}</p>
+                </div>
+            </div>
+        `;
+    }
+
+    async function fetchFleetData() {
+      try {
+        const response = await fetch(
+          "{{ url_for('geotab.get_fleet_status') }}"
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        allVehiclesData = data;
+
+        // Re-renderizar la lista y el panel de detalles si hay uno seleccionado
+        filterAndRenderList();
+        if (selectedVehicleId) {
+          const selectedVehicle = allVehiclesData.find(
+            (v) => v.id === selectedVehicleId
+          );
+          renderDetailsPanel(selectedVehicle);
+        }
+      } catch (error) {
+        console.error("Error fetching fleet data:", error);
+        vehicleListEl.innerHTML = `<p class="text-red-500 text-center mt-8">Error al cargar datos. Verifique las credenciales de la API en el backend.</p>`;
+      }
+    }
+
+    function filterAndRenderList() {
+      const searchTerm = searchInput.value.toLowerCase();
+      const filteredVehicles = allVehiclesData.filter((v) =>
+        v.name.toLowerCase().includes(searchTerm)
+      );
+      renderVehicleList(filteredVehicles);
+    }
+
+    // Event Listeners
+    searchInput.addEventListener("input", filterAndRenderList);
+
+    vehicleListEl.addEventListener("click", (e) => {
+      const item = e.target.closest(".vehicle-item");
+      if (item) {
+        selectedVehicleId = item.dataset.id;
+        const selectedVehicle = allVehiclesData.find(
+          (v) => v.id === selectedVehicleId
+        );
+        renderDetailsPanel(selectedVehicle);
+        filterAndRenderList(); // Re-render list to show selection
+      }
+    });
+
+    // Carga inicial y actualización periódica
+    fetchFleetData();
+    setInterval(fetchFleetData, 60000); // Actualiza cada 60 segundos
+  });
+</script>
+{% endblock %}

@@ -4,7 +4,6 @@ from flask import Flask
 from datetime import datetime
 import pytz
 
-# <-- 1. IMPORTAR LAS EXTENSIONES DESDE EL NUEVO ARCHIVO -->
 from .extensions import db, login_manager, socketio, migrate, limiter
 
 def create_app():
@@ -50,9 +49,11 @@ def create_app():
     from .catalog import catalog_bp
     app.register_blueprint(catalog_bp)
 
-    # --- NUEVO BLUEPRINT PARA LLANTAS ---
     from .llantas_routes import llantas_bp
     app.register_blueprint(llantas_bp)
-
+    
+    # --- NUEVO BLUEPRINT PARA GEOTAB ---
+    from .geotab_routes import geotab_bp
+    app.register_blueprint(geotab_bp)
 
     return app
