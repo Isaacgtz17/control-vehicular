@@ -1,15 +1,28 @@
 # app/routes.py
-import base64, qrcode, uuid, csv, io, os
-from datetime import datetime
+import os
+import datetime
+import base64
+import qrcode
+import uuid
+import csv
+import io
 import pytz
 from flask import (Blueprint, request, jsonify, render_template, redirect, url_for, 
                    send_file, flash, abort, Response, current_app)
 from flask_login import login_required, current_user
-from .models import Vehiculo, RegistroAcceso, User, AuditLog, Operador, ChecklistSalida
+from werkzeug.utils import secure_filename
+
+# Asegúrate que los modelos y extensiones se importen correctamente
+# Se usan los nombres de tus modelos: Vehiculo, RegistroAcceso, etc.
+from .models import (Vehiculo, RegistroAcceso, User, AuditLog, Operador, 
+                     ChecklistSalida, EvidenciaFotografica) 
 from . import db, socketio
 from .utils import admin_required, log_action
 
+# Usamos el blueprint que ya tenías definido
 main_bp = Blueprint('main', __name__)
+
+# --- Rutas de Dashboards y Vistas Principales ---
 
 @main_bp.route('/')
 @login_required
@@ -58,25 +71,120 @@ def index():
     if current_user.role == 'admin':
         return render_template('index.html', **template_data)
     else:
-        return render_template('dashboard_vigilante.html', **template_data)
+        return render_template('dashboard_vigilante.html', registros=registros_pagination)
 
-@main_bp.route('/vehiculo/toggle_maintenance/<int:vehiculo_id>', methods=['POST'])
+# --- NUEVO FLUJO DE REVISIÓN CON FOTOS GUIADAS ---
+
+@main_bp.route('/escaner_movil')
 @login_required
-@admin_required
-def toggle_maintenance_status(vehiculo_id):
-    vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
-    
+def escaner_movil():
+    """Muestra la página del escáner QR."""
+    return render_template('escaner_movil.html')
+
+@main_bp.route('/process-qr', methods=['POST'])
+@login_required
+def process_qr():
+    """
+    Recibe el QR, determina si es salida o llegada y redirige al proceso de revisión.
+    """
+    qr_id = request.form.get('qr_data')
+    vehiculo = Vehiculo.query.filter_by(qr_id=qr_id).first()
+
+    if not vehiculo:
+        return jsonify({'success': False, 'message': 'Vehículo no encontrado.'})
+
     if vehiculo.status == 'mantenimiento':
-        new_status = vehiculo.status_before_maintenance
-    else:
-        vehiculo.status_before_maintenance = vehiculo.status
-        new_status = 'mantenimiento'
+        return jsonify({'success': False, 'message': f'UNIDAD {vehiculo.numero_economico} EN MANTENIMIENTO'})
+
+    # Lógica de SALIDA (el vehículo está 'adentro')
+    if vehiculo.status == 'adentro':
+        nuevo_registro = RegistroAcceso(vehiculo_id=vehiculo.id, tipo='Salida')
+        db.session.add(nuevo_registro)
+        db.session.commit()
         
-    old_status = vehiculo.status
-    vehiculo.status = new_status
-    db.session.commit()
+        return jsonify({
+            'success': True, 
+            'redirect_url': url_for('main.check_process', registro_id=nuevo_registro.id, process_type='salida')
+        })
+
+    # Lógica de LLEGADA (el vehículo está 'afuera')
+    elif vehiculo.status == 'afuera':
+        ultimo_registro_salida = RegistroAcceso.query.filter_by(vehiculo_id=vehiculo.id, tipo='Salida').order_by(RegistroAcceso.timestamp.desc()).first()
+        
+        nuevo_registro_entrada = RegistroAcceso(vehiculo_id=vehiculo.id, tipo='Entrada')
+        if ultimo_registro_salida:
+            nuevo_registro_entrada.conductor_asignado = ultimo_registro_salida.conductor_asignado
+        db.session.add(nuevo_registro_entrada)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'redirect_url': url_for('main.check_process', registro_id=nuevo_registro_entrada.id, process_type='llegada')
+        })
     
-    log_action("Cambio de Estado Manual", f"Unidad {vehiculo.numero_economico}: de '{old_status}' a '{new_status}'")
+    else:
+        return jsonify({'success': False, 'message': f'El estado actual del vehículo ({vehiculo.status}) no permite esta operación.'})
+
+@main_bp.route('/check-process/<int:registro_id>/<string:process_type>')
+@login_required
+def check_process(registro_id, process_type):
+    """Muestra la página de checklist para tomar las fotos."""
+    registro = RegistroAcceso.query.get_or_404(registro_id)
+    vehiculo = registro.vehiculo
+    return render_template('check_process.html', registro_id=registro.id, vehiculo=vehiculo, process_type=process_type)
+
+@main_bp.route('/upload-check-photo', methods=['POST'])
+@login_required
+def upload_check_photo():
+    """Recibe y guarda una foto de evidencia para un registro específico."""
+    if 'photo' not in request.files:
+        return jsonify({'success': False, 'message': 'No se encontró el archivo de la foto.'})
+
+    file = request.files['photo']
+    registro_id = request.form.get('registro_id')
+    photo_type = request.form.get('photo_type')
+
+    if not all([file, registro_id, photo_type]):
+        return jsonify({'success': False, 'message': 'Faltan datos para subir la foto.'})
+
+    try:
+        filename = secure_filename(f"{registro_id}_{photo_type}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg")
+        upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'])
+        os.makedirs(upload_folder, exist_ok=True)
+        file_path = os.path.join(upload_folder, filename)
+        file.save(file_path)
+
+        nueva_evidencia = EvidenciaFotografica(
+            registro_acceso_id=registro_id, 
+            tipo_foto=photo_type, 
+            url_foto=filename
+        )
+        db.session.add(nueva_evidencia)
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': 'Foto guardada.', 'photo_url': filename})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error al guardar foto: {e}")
+        return jsonify({'success': False, 'message': 'Error interno al guardar la foto.'})
+
+@main_bp.route('/finish-check/<int:registro_id>')
+@login_required
+def finish_check(registro_id):
+    """Finaliza el proceso de revisión y actualiza el estado del vehículo."""
+    registro = RegistroAcceso.query.get_or_404(registro_id)
+    vehiculo = registro.vehiculo
+    
+    if registro.tipo == 'Salida':
+        vehiculo.status = 'afuera'
+        action_log_msg = f'Completó revisión de SALIDA para vehículo {vehiculo.numero_economico}'
+        log_action("Revisión Salida", f"Vehículo: {vehiculo.numero_economico}")
+    elif registro.tipo == 'Entrada':
+        vehiculo.status = 'adentro'
+        action_log_msg = f'Completó revisión de LLEGADA para vehículo {vehiculo.numero_economico}'
+        log_action("Revisión Entrada", f"Vehículo: {vehiculo.numero_economico}")
+    
+    db.session.commit()
     
     unidades_en_patio = Vehiculo.query.filter_by(status='adentro').count()
     unidades_mantenimiento = Vehiculo.query.filter_by(status='mantenimiento').count()
@@ -89,145 +197,37 @@ def toggle_maintenance_status(vehiculo_id):
     }
     socketio.emit('update_dashboard', update_data)
     
-    return jsonify({'status': 'success', 'message': f'Estado de {vehiculo.numero_economico} actualizado.'})
+    flash(f'Proceso para el vehículo {vehiculo.numero_economico} finalizado con éxito.', 'success')
+    return redirect(url_for('main.index'))
 
-@main_bp.route('/api/prepare_scan/<qr_id>')
+# --- RUTAS DE GESTIÓN Y OTRAS (CÓDIGO ORIGINAL) ---
+
+@main_bp.route('/vehiculo/toggle_maintenance/<int:vehiculo_id>', methods=['POST'])
 @login_required
-def prepare_scan(qr_id):
-    vehiculo = Vehiculo.query.filter_by(qr_id=qr_id).first()
-    if not vehiculo:
-        return jsonify({'status': 'error', 'message': 'Vehículo no reconocido'}), 404
-
+@admin_required
+def toggle_maintenance_status(vehiculo_id):
+    vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     if vehiculo.status == 'mantenimiento':
-        return jsonify({'status': 'denegado', 'message': f'UNIDAD {vehiculo.numero_economico} EN MANTENIMIENTO'}), 403
-
-    if vehiculo.status == 'afuera':
-        return jsonify({'status': 'ok', 'action': 'entrada', 'vehiculo': {'placa': vehiculo.placa, 'numero_economico': vehiculo.numero_economico}})
+        new_status = vehiculo.status_before_maintenance or 'adentro'
     else:
-        operadores = Operador.query.order_by(Operador.nombre).all()
-        operadores_list = [{'id': op.id, 'nombre': op.nombre} for op in operadores]
-        return jsonify({
-            'status': 'ok', 
-            'action': 'salida', 
-            'vehiculo': {'placa': vehiculo.placa, 'numero_economico': vehiculo.numero_economico},
-            'operadores': operadores_list
-        })
-
-@main_bp.route('/verificar_qr', methods=['POST'])
-def verificar_qr():
-    data = request.json
-    qr_id = data.get('qr_id')
-    conductor_asignado = data.get('conductor_asignado')
-    checklist_data = data.get('checklist')
-    photo_data = data.get('photo') # Foto de evidencia general
-
-    if not qr_id:
-        return jsonify({'status': 'error', 'message': 'Falta el ID del QR'}), 400
-
-    vehiculo = Vehiculo.query.filter_by(qr_id=qr_id).first()
-    if not vehiculo:
-        return jsonify({'status': 'denegado', 'message': 'Vehículo no reconocido'}), 404
-    
-    if vehiculo.status == 'afuera':
-        tipo_acceso = 'Entrada'
-    else:
-        tipo_acceso = 'Salida'
-        if not conductor_asignado:
-             return jsonify({'status': 'error', 'message': 'Debe seleccionar un conductor.'}), 400
-        if not checklist_data:
-             return jsonify({'status': 'error', 'message': 'Debe completar el checklist de inspección.'}), 400
-
-    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    photo_filename = None
-    if photo_data:
-        try:
-            header, encoded = photo_data.split(",", 1)
-            photo_bytes = base64.b64decode(encoded)
-            photo_filename = f"{vehiculo.placa}_{timestamp_str}_general.jpg"
-            photo_path = os.path.join(current_app.config['UPLOAD_FOLDER'], photo_filename)
-            with open(photo_path, "wb") as f:
-                f.write(photo_bytes)
-        except Exception as e:
-            print(f"Error al guardar foto general: {e}")
-            photo_filename = None
-
-    nuevo_registro = RegistroAcceso(
-        vehiculo_id=vehiculo.id, 
-        tipo=tipo_acceso, 
-        photo_filename=photo_filename,
-        conductor_asignado=conductor_asignado if tipo_acceso == 'Salida' else None
-    )
-    db.session.add(nuevo_registro)
-    
-    if tipo_acceso == 'Salida':
-        db.session.flush()
-        
-        def guardar_foto_falla(item_key, item_data):
-            foto_b64 = item_data.get('foto')
-            if not foto_b64: return None
-            try:
-                header, encoded = foto_b64.split(",", 1)
-                photo_bytes = base64.b64decode(encoded)
-                f_name = f"{vehiculo.placa}_{timestamp_str}_{item_key}.jpg"
-                photo_path = os.path.join(current_app.config['UPLOAD_FOLDER'], f_name)
-                with open(photo_path, "wb") as f: f.write(photo_bytes)
-                return f_name
-            except Exception as e:
-                print(f"Error al guardar foto de falla para {item_key}: {e}")
-                return None
-
-        nuevo_checklist = ChecklistSalida(
-            registro_acceso_id=nuevo_registro.id,
-            llantas_estado=checklist_data['llantas']['estado'],
-            llantas_obs=checklist_data['llantas'].get('obs'),
-            llantas_foto=guardar_foto_falla('llantas', checklist_data['llantas']),
-            luces_estado=checklist_data['luces']['estado'],
-            luces_obs=checklist_data['luces'].get('obs'),
-            luces_foto=guardar_foto_falla('luces', checklist_data['luces']),
-            niveles_estado=checklist_data['niveles']['estado'],
-            niveles_obs=checklist_data['niveles'].get('obs'),
-            niveles_foto=guardar_foto_falla('niveles', checklist_data['niveles']),
-            carroceria_estado=checklist_data['carroceria']['estado'],
-            carroceria_obs=checklist_data['carroceria'].get('obs'),
-            carroceria_foto=guardar_foto_falla('carroceria', checklist_data['carroceria']),
-            observaciones_generales=checklist_data.get('generales')
-        )
-        db.session.add(nuevo_checklist)
-
-    vehiculo.status = 'adentro' if tipo_acceso == 'Entrada' else 'afuera'
+        vehiculo.status_before_maintenance = vehiculo.status
+        new_status = 'mantenimiento'
+    old_status = vehiculo.status
+    vehiculo.status = new_status
     db.session.commit()
+    log_action("Cambio de Estado Manual", f"Unidad {vehiculo.numero_economico}: de '{old_status}' a '{new_status}'")
     
-    # --- LÓGICA DE ACTUALIZACIÓN EN TIEMPO REAL RESTAURADA ---
     unidades_en_patio = Vehiculo.query.filter_by(status='adentro').count()
     unidades_mantenimiento = Vehiculo.query.filter_by(status='mantenimiento').count()
     total_unidades = Vehiculo.query.count()
     unidades_en_ruta = total_unidades - unidades_en_patio - unidades_mantenimiento
     
-    local_tz = pytz.timezone("America/Mexico_City")
-    local_timestamp = pytz.utc.localize(nuevo_registro.timestamp).astimezone(local_tz)
-
     update_data = {
-        'new_log': {
-            'timestamp': local_timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'tipo': nuevo_registro.tipo,
-            'placa': vehiculo.placa,
-            'modelo': vehiculo.modelo,
-            'conductor_asignado': nuevo_registro.conductor_asignado,
-            'photo_filename': nuevo_registro.photo_filename
-        },
-        'fleet_status': {
-            'en_patio': unidades_en_patio,
-            'en_ruta': unidades_en_ruta,
-            'mantenimiento': unidades_mantenimiento
-        },
-        'vehicle_update': {
-            'id': vehiculo.id,
-            'status': vehiculo.status
-        }
+        'fleet_status': { 'en_patio': unidades_en_patio, 'en_ruta': unidades_en_ruta, 'mantenimiento': unidades_mantenimiento },
+        'vehicle_update': { 'id': vehiculo.id, 'status': vehiculo.status }
     }
     socketio.emit('update_dashboard', update_data)
-    
-    return jsonify({'status': 'autorizado', 'message': f'{tipo_acceso.upper()} REGISTRADA', 'placa': vehiculo.placa})
+    return jsonify({'status': 'success', 'message': f'Estado de {vehiculo.numero_economico} actualizado.'})
 
 @main_bp.route('/vehiculo/historial/<int:vehiculo_id>')
 @login_required
@@ -262,11 +262,6 @@ def historial_vehiculo(vehiculo_id):
         'placa': vehiculo.placa, 'modelo': vehiculo.modelo, 'conductor': vehiculo.conductor, 
         'historial': historial, 'numero_economico': vehiculo.numero_economico
     })
-
-@main_bp.route('/escaner_movil')
-@login_required
-def escaner_movil():
-    return render_template('escaner_movil.html')
 
 @main_bp.route('/registrar_vehiculo', methods=['POST'])
 @login_required

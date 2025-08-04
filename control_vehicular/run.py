@@ -10,17 +10,42 @@ from app.models import User, Vehiculo, Operador
 
 app = create_app()
 
-# EL COMANDO 'seed-operators' HA SIDO ELIMINADO.
-# La gestión de operadores ahora se realiza a través de la interfaz web en /catalog/operators
+# --- Comandos CLI para gestión ---
+
+@app.cli.command("create-initial-users")
+def create_initial_users():
+    """Crea los usuarios iniciales 'admin' y 'vigilante' con contraseñas por defecto."""
+    with app.app_context():
+        print("Creando usuarios iniciales...")
+        # Revisa si el usuario admin ya existe
+        if User.query.filter_by(username='admin').first():
+            print("El usuario 'admin' ya existe. Omitiendo.")
+        else:
+            admin_user = User(username='admin', role='admin')
+            admin_user.set_password('admin123') # ¡IMPORTANTE: Cambiar esta contraseña en producción!
+            db.session.add(admin_user)
+            print("Usuario 'admin' creado con contraseña 'admin123'.")
+
+        # Revisa si el usuario vigilante ya existe
+        if User.query.filter_by(username='vigilante').first():
+            print("El usuario 'vigilante' ya existe. Omitiendo.")
+        else:
+            vigilante_user = User(username='vigilante', role='vigilante')
+            vigilante_user.set_password('vigilante123') # ¡IMPORTANTE: Cambiar esta contraseña en producción!
+            db.session.add(vigilante_user)
+            print("Usuario 'vigilante' creado con contraseña 'vigilante123'.")
+        
+        db.session.commit()
+        print("¡Proceso de creación de usuarios iniciales finalizado!")
+
 
 @app.cli.command("create-user")
 @click.argument("username")
 @click.argument("password")
 @click.option("--role", default="vigilante", help="Rol del usuario (admin o vigilante)")
 def create_user(username, password, role):
-    """Crea un nuevo usuario en la base de datos."""
+    """Crea un nuevo usuario personalizado en la base de datos."""
     with app.app_context():
-        db.create_all()
         if User.query.filter_by(username=username).first():
             print(f"El usuario {username} ya existe.")
             return
@@ -40,7 +65,6 @@ def create_user(username, password, role):
 def import_vehicles(filepath):
     """Importa vehículos desde un archivo CSV."""
     with app.app_context():
-        db.create_all()
         try:
             with open(filepath, mode='r', encoding='utf-8') as csv_file:
                 csv_reader = csv.reader(csv_file)
@@ -94,6 +118,6 @@ def import_vehicles(filepath):
             db.session.rollback()
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    # La gestión de la base de datos se debe hacer con 'flask db upgrade'
+    # No es necesario db.create_all() aquí.
     socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)

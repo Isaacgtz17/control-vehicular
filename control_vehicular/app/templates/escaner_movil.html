@@ -3,402 +3,128 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Escaner QR Vehicular</title>
+    <title>Escanear QR Vehicular</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script
-      src="https://unpkg.com/html5-qrcode"
-      type="text/javascript"
-    ></script>
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
-      .hidden {
-        display: none;
+      body {
+        font-family: "Inter", sans-serif;
       }
       #reader {
         width: 100%;
         max-width: 500px;
-        margin: auto;
-        border: 2px solid #4a5568;
-        border-radius: 8px;
+        margin: 0 auto;
+        border: 4px solid #3b82f6;
+        border-radius: 1rem;
+        overflow: hidden;
       }
-      .camera-view {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: black;
-        z-index: 100;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
+      .status-message {
+        display: none;
+        padding: 1rem;
+        margin-top: 1.5rem;
+        border-radius: 0.5rem;
+        text-align: center;
+        font-weight: 500;
       }
-      .camera-view video {
-        width: 100%;
-        max-width: 600px;
+      .status-message.success {
+        background-color: #dcfce7;
+        color: #166534;
+      }
+      .status-message.error {
+        background-color: #fee2e2;
+        color: #991b1b;
       }
     </style>
   </head>
   <body
     class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4"
   >
-    <!-- Vista Principal -->
-    <div id="main-view" class="w-full max-w-lg text-center">
-      <h1 id="main-title" class="text-3xl font-bold mb-4">Escaner de Acceso</h1>
-      <p id="instruction-text" class="mb-6">
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-bold">Control de Acceso Vehicular</h1>
+      <p class="text-gray-400 mt-2">
         Apunte la cámara al código QR de la unidad.
       </p>
-
-      <div id="reader-container" class="mb-4">
-        <div id="reader"></div>
-      </div>
-
-      <div id="salida-form-container" class="hidden mb-4 text-left">
-        <!-- El formulario de salida se renderizará aquí -->
-      </div>
-
-      <div id="checklist-container" class="hidden w-full text-left">
-        <!-- El checklist se renderizará aquí -->
-      </div>
-
-      <div
-        id="result"
-        class="mt-6 p-4 rounded-lg w-full max-w-lg text-center font-bold"
-      ></div>
-      <a
-        href="{{ url_for('main.index') }}"
-        class="mt-8 inline-block text-blue-400 hover:text-blue-300"
-        >&larr; Volver al Dashboard</a
-      >
     </div>
 
-    <!-- Vista de Cámara para Fallas y Evidencia General -->
-    <div id="camera-modal" class="camera-view hidden">
-      <video id="camera-preview" autoplay playsinline></video>
-      <button
-        id="capture-btn"
-        class="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-full text-lg"
-      >
-        Capturar
-      </button>
-      <button
-        id="cancel-capture-btn"
-        class="mt-2 text-gray-400 hover:text-white"
-      >
-        Cancelar
-      </button>
-    </div>
+    <div id="reader"></div>
+
+    <div id="result" class="status-message"></div>
+
+    <a
+      href="{{ url_for('dashboard_vigilante') }}"
+      class="mt-8 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg"
+    >
+      Volver al Dashboard
+    </a>
 
     <script>
-      // --- GESTIÓN DE ESTADO ---
-      let html5QrCode;
-      let isProcessing = false;
-      let currentQrId = null;
-      let currentAction = null;
-      let checklistData = {};
-      let departurePhotoData = null; // Almacenará la foto de evidencia general
-      let currentChecklistItem = null; // Para saber qué foto de falla se está tomando
-
-      const CHECKLIST_ITEMS = [
-        { key: "llantas", label: "Condición de Llantas" },
-        { key: "luces", label: "Sistema de Luces" },
-        { key: "niveles", label: "Niveles (Aceite, Agua)" },
-        { key: "carroceria", label: "Carrocería y Espejos" },
-      ];
-
-      // --- ELEMENTOS DEL DOM ---
-      const mainView = document.getElementById("main-view");
-      const mainTitle = document.getElementById("main-title");
-      const instructionText = document.getElementById("instruction-text");
-      const readerContainer = document.getElementById("reader-container");
-      const salidaFormContainer = document.getElementById(
-        "salida-form-container"
-      );
-      const checklistContainer = document.getElementById("checklist-container");
-      const resultElement = document.getElementById("result");
-      const cameraModal = document.getElementById("camera-modal");
-      const cameraPreview = document.getElementById("camera-preview");
-      const captureBtn = document.getElementById("capture-btn");
-      const cancelCaptureBtn = document.getElementById("cancel-capture-btn");
-
-      // --- FUNCIONES DE UI ---
-      function showMessage(message, isError = false) {
-        resultElement.textContent = message;
-        resultElement.className = `mt-6 p-4 rounded-lg w-full max-w-lg text-center font-bold ${
-          isError ? "bg-red-500" : "bg-green-500"
-        }`;
-      }
-
-      function checkCanProceed() {
-        const conductor = document.getElementById("conductor-select")?.value;
-        const startButton = document.getElementById("start-checklist-btn");
-        if (conductor && departurePhotoData && startButton) {
-          startButton.disabled = false;
-        }
-      }
-
-      function renderSalidaForm(operadores) {
-        mainTitle.textContent = "Registro de Salida";
-        instructionText.textContent =
-          "Complete los siguientes pasos para continuar.";
-        salidaFormContainer.innerHTML = `
-            <div class="mb-4">
-                <label class="block mb-2 font-bold">1. Evidencia de Salida:</label>
-                <button id="take-evidence-photo-btn" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-lg">Tomar Foto General</button>
-                <p id="photo-status-general" class="text-green-400 mt-2 hidden">✓ Foto de evidencia guardada</p>
-            </div>
-            <div class="mb-4">
-                <label for="conductor-select" class="block mb-2 font-bold">2. Seleccione Conductor:</label>
-                <select id="conductor-select" class="w-full p-2 rounded bg-gray-800 text-white border border-gray-600">
-                    <option value="">-- Seleccionar --</option>
-                    ${operadores
-                      .map(
-                        (op) =>
-                          `<option value="${op.nombre}">${op.nombre}</option>`
-                      )
-                      .join("")}
-                </select>
-            </div>
-            <button id="start-checklist-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg disabled:bg-gray-500" disabled>Iniciar Inspección de Salida</button>
-        `;
-        salidaFormContainer.classList.remove("hidden");
-
-        document
-          .getElementById("take-evidence-photo-btn")
-          .addEventListener("click", openGeneralCamera);
-        document
-          .getElementById("start-checklist-btn")
-          .addEventListener("click", startChecklist);
-        document
-          .getElementById("conductor-select")
-          .addEventListener("change", checkCanProceed);
-      }
-
-      function renderChecklistItem(itemIndex) {
-        if (itemIndex >= CHECKLIST_ITEMS.length) {
-          renderChecklistSummary();
-          return;
-        }
-        const item = CHECKLIST_ITEMS[itemIndex];
-        currentChecklistItem = item.key;
-        mainTitle.textContent = `Inspección: ${item.label}`;
-        instructionText.textContent = `Paso ${itemIndex + 1} de ${
-          CHECKLIST_ITEMS.length
-        }`;
-
-        checklistContainer.innerHTML = `
-            <div class="bg-gray-800 p-4 rounded-lg">
-                <p class="text-lg mb-4">¿El estado de "${
-                  item.label
-                }" es correcto?</p>
-                <div class="grid grid-cols-2 gap-4">
-                    <button onclick="recordChecklist('${item.key}', 'ok', ${
-          itemIndex + 1
-        })" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">OK</button>
-                    <button onclick="recordChecklist('${item.key}', 'falla', ${
-          itemIndex + 1
-        })" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg">Con Falla</button>
-                </div>
-                <div id="falla-details-${item.key}" class="hidden mt-4">
-                    <label for="obs-${
-                      item.key
-                    }" class="block mb-2 font-bold">Describa la falla:</label>
-                    <textarea id="obs-${
-                      item.key
-                    }" rows="2" class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"></textarea>
-                    <button onclick="openFailureCamera()" class="w-full mt-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg">Tomar Foto de Falla</button>
-                    <p id="foto-status-${
-                      item.key
-                    }" class="text-green-400 mt-2 hidden">✓ Foto de falla guardada</p>
-                    <button onclick="renderChecklistItem(${
-                      itemIndex + 1
-                    })" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Siguiente</button>
-                </div>
-            </div>
-        `;
-      }
-
-      function renderChecklistSummary() {
-        mainTitle.textContent = "Finalizar Inspección";
-        instructionText.textContent =
-          "Añada observaciones generales si es necesario.";
-        checklistContainer.innerHTML = `
-            <div class="bg-gray-800 p-4 rounded-lg">
-                <label for="obs-generales" class="block mb-2 font-bold">Observaciones Generales (Opcional):</label>
-                <textarea id="obs-generales" rows="3" class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"></textarea>
-                <button onclick="submitSalida()" class="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-4 rounded-lg text-lg">REGISTRAR SALIDA</button>
-            </div>
-        `;
-      }
-
-      // --- LÓGICA DE PROCESO ---
       function onScanSuccess(decodedText, decodedResult) {
-        if (isProcessing) return;
-        isProcessing = true;
-        currentQrId = decodedText;
-        html5QrCode.stop();
-        readerContainer.classList.add("hidden");
+        // Detener el escáner para evitar múltiples envíos
+        html5QrcodeScanner.clear();
 
-        fetch(`/api/prepare_scan/${currentQrId}`)
+        // Mostrar un mensaje de procesamiento
+        const resultDiv = document.getElementById("result");
+        resultDiv.textContent = "Procesando QR...";
+        resultDiv.className = "status-message success";
+        resultDiv.style.display = "block";
+
+        // Crear un FormData para enviar el dato
+        const formData = new FormData();
+        formData.append("qr_data", decodedText);
+
+        // Enviar el dato al servidor usando fetch
+        fetch("/process-qr", {
+          method: "POST",
+          body: formData,
+          // Añadir el token CSRF si estás usando Flask-WTF con protección
+          headers: {
+            // 'X-CSRFToken': '{{ csrf_token() }}' // Descomentar si usas CSRF
+          },
+        })
           .then((response) => response.json())
           .then((data) => {
-            if (data.status !== "ok") {
-              showMessage(data.message, true);
-              setTimeout(() => window.location.reload(), 2000);
-              return;
-            }
-            currentAction = data.action;
-            instructionText.textContent = `Vehículo: ${data.vehiculo.numero_economico}`;
-            if (data.action === "salida") {
-              renderSalidaForm(data.operadores);
+            if (data.success) {
+              // Si el servidor responde con éxito, redirigir a la URL que nos indica
+              resultDiv.textContent =
+                "¡Éxito! Redirigiendo al proceso de revisión...";
+              window.location.href = data.redirect_url;
             } else {
-              submitEntrada();
+              // Si hay un error, mostrarlo y reiniciar el escáner
+              resultDiv.textContent = "Error: " + data.message;
+              resultDiv.className = "status-message error";
+              // Opcional: reiniciar el escáner después de un error
+              setTimeout(() => {
+                html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+                resultDiv.style.display = "none";
+              }, 3000);
             }
+          })
+          .catch((error) => {
+            console.error("Error en la petición fetch:", error);
+            resultDiv.textContent = "Error de conexión. Intente de nuevo.";
+            resultDiv.className = "status-message error";
+            // Reiniciar el escáner
+            setTimeout(() => {
+              html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+              resultDiv.style.display = "none";
+            }, 3000);
           });
       }
 
-      function startChecklist() {
-        const conductor = document.getElementById("conductor-select").value;
-        checklistData.conductor_asignado = conductor;
-        salidaFormContainer.classList.add("hidden");
-        checklistContainer.classList.remove("hidden");
-        renderChecklistItem(0);
+      function onScanFailure(error) {
+        // Manejar errores de escaneo (no es un error crítico)
+        // console.warn(`Error de escaneo = ${error}`);
       }
 
-      window.recordChecklist = (key, estado, nextIndex) => {
-        checklistData[key] = { estado: estado };
-        if (estado === "ok") {
-          renderChecklistItem(nextIndex);
-        } else {
-          document
-            .getElementById(`falla-details-${key}`)
-            .classList.remove("hidden");
-        }
-      };
-
-      function openCamera(onCapture) {
-        cameraModal.classList.remove("hidden");
-        navigator.mediaDevices
-          .getUserMedia({ video: { facingMode: "environment" } })
-          .then((stream) => {
-            cameraPreview.srcObject = stream;
-          });
-
-        const captureHandler = () => {
-          const canvas = document.createElement("canvas");
-          canvas.width = cameraPreview.videoWidth;
-          canvas.height = cameraPreview.videoHeight;
-          canvas.getContext("2d").drawImage(cameraPreview, 0, 0);
-          const dataUrl = canvas.toDataURL("image/jpeg");
-
-          onCapture(dataUrl); // Llama a la función callback con la foto
-
-          closeCamera();
-          captureBtn.removeEventListener("click", captureHandler);
-        };
-
-        captureBtn.addEventListener("click", captureHandler);
-      }
-
-      function closeCamera() {
-        if (cameraPreview.srcObject) {
-          cameraPreview.srcObject.getTracks().forEach((track) => track.stop());
-        }
-        cameraModal.classList.add("hidden");
-      }
-
-      cancelCaptureBtn.addEventListener("click", closeCamera);
-
-      function openGeneralCamera() {
-        captureBtn.textContent = "Capturar Evidencia";
-        openCamera((photoData) => {
-          departurePhotoData = photoData;
-          document
-            .getElementById("photo-status-general")
-            .classList.remove("hidden");
-          document.getElementById("take-evidence-photo-btn").disabled = true;
-          checkCanProceed();
-        });
-      }
-
-      window.openFailureCamera = () => {
-        captureBtn.textContent = "Capturar Falla";
-        openCamera((photoData) => {
-          checklistData[currentChecklistItem].foto = photoData;
-          checklistData[currentChecklistItem].obs = document.getElementById(
-            `obs-${currentChecklistItem}`
-          ).value;
-          document
-            .getElementById(`foto-status-${currentChecklistItem}`)
-            .classList.remove("hidden");
-        });
-      };
-
-      function submitSalida() {
-        checklistData.generales =
-          document.getElementById("obs-generales").value;
-        const payload = {
-          qr_id: currentQrId,
-          conductor_asignado: checklistData.conductor_asignado,
-          photo: departurePhotoData, // <-- Se añade la foto de evidencia general
-          checklist: {
-            llantas: checklistData.llantas || { estado: "ok" },
-            luces: checklistData.luces || { estado: "ok" },
-            niveles: checklistData.niveles || { estado: "ok" },
-            carroceria: checklistData.carroceria || { estado: "ok" },
-            generales: checklistData.generales,
-          },
-        };
-
-        mainView.innerHTML =
-          '<p class="text-2xl font-bold">Registrando, por favor espere...</p>';
-        fetch("/verificar_qr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            showMessage(data.message, data.status !== "autorizado");
-            setTimeout(
-              () => (window.location.href = "{{ url_for('main.index') }}"),
-              2000
-            );
-          });
-      }
-
-      function submitEntrada() {
-        mainView.innerHTML =
-          '<p class="text-2xl font-bold">Registrando Entrada...</p>';
-        fetch("/verificar_qr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ qr_id: currentQrId }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            showMessage(data.message, data.status !== "autorizado");
-            setTimeout(
-              () => (window.location.href = "{{ url_for('main.index') }}"),
-              2000
-            );
-          });
-      }
-
-      // --- INICIALIZACIÓN ---
-      document.addEventListener("DOMContentLoaded", () => {
-        html5QrCode = new Html5Qrcode("reader");
-        html5QrCode
-          .start(
-            { facingMode: "environment" },
-            { fps: 10, qrbox: { width: 250, height: 250 } },
-            onScanSuccess,
-            (error) => {
-              /* Silencioso */
-            }
-          )
-          .catch((err) => showMessage("No se pudo iniciar el escáner.", true));
+      let html5QrcodeScanner = new Html5QrcodeScanner("reader", {
+        fps: 10,
+        qrbox: 250,
       });
+      html5QrcodeScanner.render(onScanSuccess, onScanFailure);
     </script>
   </body>
 </html>

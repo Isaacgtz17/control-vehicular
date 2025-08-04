@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Proceso de Revisión - {{ vehiculo.numero_economico }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+      }
+      .camera-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.9);
+        z-index: 999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      #video {
+        width: 100%;
+        max-width: 640px;
+        border-radius: 1rem;
+      }
+      #canvas {
+        display: none;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100">
+    <div class="container mx-auto p-4 max-w-2xl">
+      <header class="bg-white p-4 rounded-lg shadow-md mb-6">
+        <div class="flex justify-between items-center">
+          <div>
+            <h1 class="text-2xl font-bold text-gray-800">
+              Revisión de Vehículo
+            </h1>
+            <p class="text-gray-600">
+              Unidad:
+              <span class="font-semibold">{{ vehiculo.numero_economico }}</span>
+              | Placas: <span class="font-semibold">{{ vehiculo.placa }}</span>
+            </p>
+          </div>
+          <span
+            class="text-sm font-bold py-1 px-3 rounded-full {{ 'bg-red-500 text-white' if process_type == 'salida' else 'bg-green-500 text-white' }}"
+          >
+            {{ process_type.upper() }}
+          </span>
+        </div>
+      </header>
+
+      <main class="bg-white p-6 rounded-lg shadow-md">
+        <div class="mb-6">
+          <h2 class="text-lg font-semibold text-gray-700 mb-2">
+            Evidencia Fotográfica Requerida
+          </h2>
+          <p class="text-gray-500 text-sm">
+            Por favor, tome una foto clara de cada uno de los siguientes ángulos
+            del vehículo.
+          </p>
+        </div>
+
+        <div id="photo-checklist" class="space-y-4">
+          <!-- Las tareas de fotos se generarán con JavaScript -->
+        </div>
+
+        <div class="mt-8">
+          <button
+            id="finish-button"
+            class="w-full bg-gray-400 text-white font-bold py-3 px-4 rounded-lg cursor-not-allowed"
+            disabled
+          >
+            Finalizar Revisión
+          </button>
+        </div>
+      </main>
+    </div>
+
+    <!-- Contenedor de la Cámara (Modal) -->
+    <div id="camera-view" class="camera-container hidden">
+      <video id="video" playsinline autoplay></video>
+      <canvas id="canvas"></canvas>
+      <div class="p-4 w-full max-w-md">
+        <p
+          id="camera-instruction"
+          class="text-white text-center text-lg font-semibold mb-4"
+        ></p>
+        <button
+          id="capture-button"
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg mb-2"
+        >
+          Capturar Foto
+        </button>
+        <button
+          id="cancel-capture"
+          class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+          const registroId = {{ registro_id }};
+          const processType = "{{ process_type }}";
+          const photoChecklist = document.getElementById('photo-checklist');
+          const finishButton = document.getElementById('finish-button');
+
+          const requiredPhotos = [
+              { id: `frontal_${processType}`, label: 'Foto Frontal' },
+              { id: `lateral_derecho_${processType}`, label: 'Lateral Derecho' },
+              { id: `trasera_${processType}`, label: 'Foto Trasera' },
+              { id: `lateral_izquierdo_${processType}`, label: 'Lateral Izquierdo' }
+          ];
+
+          let photosTaken = {};
+
+          // --- Lógica de la Cámara ---
+          const cameraView = document.getElementById('camera-view');
+          const video = document.getElementById('video');
+          const canvas = document.getElementById('canvas');
+          const captureButton = document.getElementById('capture-button');
+          const cancelCaptureButton = document.getElementById('cancel-capture');
+          const cameraInstruction = document.getElementById('camera-instruction');
+          let currentPhotoId = null;
+
+          async function startCamera(photoId, label) {
+              currentPhotoId = photoId;
+              cameraInstruction.textContent = `Apunte a la parte: ${label}`;
+              cameraView.classList.remove('hidden');
+              try {
+                  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                  video.srcObject = stream;
+              } catch (err) {
+                  console.error("Error al acceder a la cámara: ", err);
+                  alert("No se pudo acceder a la cámara. Asegúrese de otorgar los permisos.");
+                  cameraView.classList.add('hidden');
+              }
+          }
+
+          function stopCamera() {
+              const stream = video.srcObject;
+              if (stream) {
+                  const tracks = stream.getTracks();
+                  tracks.forEach(track => track.stop());
+              }
+              video.srcObject = null;
+              cameraView.classList.add('hidden');
+          }
+
+          cancelCaptureButton.addEventListener('click', stopCamera);
+
+          captureButton.addEventListener('click', () => {
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+              const context = canvas.getContext('2d');
+              context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+              stopCamera();
+
+              canvas.toBlob(blob => {
+                  uploadPhoto(blob, currentPhotoId);
+              }, 'image/jpeg', 0.9);
+          });
+
+          async function uploadPhoto(blob, photoId) {
+              const formData = new FormData();
+              formData.append('photo', blob, `${photoId}.jpg`);
+              formData.append('registro_id', registroId);
+              formData.append('photo_type', photoId);
+
+              try {
+                  const response = await fetch("{{ url_for('main.upload_check_photo') }}", {
+                      method: 'POST',
+                      body: formData
+                  });
+                  const result = await response.json();
+                  if (result.success) {
+                      photosTaken[photoId] = true;
+                      renderChecklist();
+                      checkCompletion();
+                  } else {
+                      alert('Error al subir la foto: ' + result.message);
+                  }
+              } catch (error) {
+                  console.error('Error en la subida:', error);
+                  alert('Ocurrió un error de red al subir la foto.');
+              }
+          }
+
+
+          // --- Lógica de la Checklist ---
+          function renderChecklist() {
+              photoChecklist.innerHTML = '';
+              requiredPhotos.forEach(photo => {
+                  const isTaken = photosTaken[photo.id];
+                  const item = document.createElement('div');
+                  item.className = `p-4 rounded-lg flex items-center justify-between ${isTaken ? 'bg-green-100' : 'bg-gray-50'}`;
+                  item.innerHTML = `
+                      <div class="flex items-center">
+                          <div class="mr-4">
+                              ${isTaken
+                                  ? `<svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`
+                                  : `<svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>`
+                              }
+                          </div>
+                          <div>
+                              <p class="font-semibold ${isTaken ? 'text-green-800' : 'text-gray-800'}">${photo.label}</p>
+                              <p class="text-sm ${isTaken ? 'text-green-600' : 'text-gray-500'}">${isTaken ? 'Evidencia guardada' : 'Pendiente'}</p>
+                          </div>
+                      </div>
+                      <button data-photo-id="${photo.id}" data-label="${photo.label}" class="take-photo-btn bg-blue-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-600 ${isTaken ? 'hidden' : ''}">
+                          Tomar Foto
+                      </button>
+                  `;
+                  photoChecklist.appendChild(item);
+              });
+
+              // Añadir listeners a los nuevos botones
+              document.querySelectorAll('.take-photo-btn').forEach(button => {
+                  button.addEventListener('click', (e) => {
+                      const photoId = e.target.dataset.photoId;
+                      const label = e.target.dataset.label;
+                      startCamera(photoId, label);
+                  });
+              });
+          }
+
+          function checkCompletion() {
+              const allTaken = requiredPhotos.every(p => photosTaken[p.id]);
+              if (allTaken) {
+                  finishButton.disabled = false;
+                  finishButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                  finishButton.classList.add('bg-green-600', 'hover:bg-green-700');
+              }
+          }
+
+          finishButton.addEventListener('click', () => {
+              if (!finishButton.disabled) {
+                  window.location.href = `/finish-check/${registroId}`;
+              }
+          });
+
+          // Carga inicial
+          renderChecklist();
+      });
+    </script>
+  </body>
+</html>
