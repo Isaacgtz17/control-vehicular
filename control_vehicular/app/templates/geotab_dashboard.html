@@ -92,28 +92,42 @@
 
       detailsPanelEl.innerHTML = `
             <div>
-                <h1 class="text-3xl font-bold text-gray-800 mb-2">${vehicle.name}</h1>
-                <p class="text-sm text-gray-500 mb-6">Último reporte: ${vehicle.last_report}</p>
+                <h1 class="text-3xl font-bold text-gray-800 mb-2">${
+                  vehicle.name
+                }</h1>
+                <p class="text-sm text-gray-500 mb-6">Último reporte: ${
+                  vehicle.last_report
+                }</p>
                 
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div class="bg-gray-50 p-4 rounded-lg text-center">
                         <p class="text-sm text-gray-600">Velocidad Actual</p>
-                        <p class="text-4xl font-bold text-blue-600">${vehicle.speed} <span class="text-lg">km/h</span></p>
+                        <p class="text-4xl font-bold text-blue-600">${
+                          vehicle.speed
+                        } <span class="text-lg">km/h</span></p>
                     </div>
                     <div class="bg-gray-50 p-4 rounded-lg text-center">
                         <p class="text-sm text-gray-600">Odómetro</p>
-                        <p class="text-4xl font-bold text-blue-600">${vehicle.odometer} <span class="text-lg">km</span></p>
+                        <p class="text-4xl font-bold text-blue-600">${
+                          vehicle.odometer / 1000
+                        } <span class="text-lg">km</span></p>
                     </div>
                     <div class="bg-gray-50 p-4 rounded-lg text-center">
                         <p class="text-sm text-gray-600">Nivel de Gasolina</p>
-                        <p class="text-4xl font-bold text-blue-600">${vehicle.fuel_level} <span class="text-lg">%</span></p>
+                        <p class="text-4xl font-bold text-blue-600">${
+                          vehicle.fuel_level
+                        } <span class="text-lg">%</span></p>
                     </div>
                 </div>
 
                 <div class="mt-6 bg-gray-50 p-4 rounded-lg">
                      <h3 class="font-semibold mb-2">Última Ubicación Conocida</h3>
-                     <p><span class="font-medium">Latitud:</span> ${vehicle.latitude}</p>
-                     <p><span class="font-medium">Longitud:</span> ${vehicle.longitude}</p>
+                     <p><span class="font-medium">Latitud:</span> ${
+                       vehicle.latitude
+                     }</p>
+                     <p><span class="font-medium">Longitud:</span> ${
+                       vehicle.longitude
+                     }</p>
                 </div>
             </div>
         `;
