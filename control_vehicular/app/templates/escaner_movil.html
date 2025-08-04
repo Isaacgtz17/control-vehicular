@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Escanear QR Vehicular</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
@@ -54,49 +54,46 @@
 
     <div id="result" class="status-message"></div>
 
+    <!-- CORRECCIÓN APLICADA AQUÍ -->
     <a
-      href="{{ url_for('dashboard_vigilante') }}"
+      href="{{ url_for('main.dashboard_vigilante') }}"
       class="mt-8 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg"
     >
       Volver al Dashboard
     </a>
 
     <script>
+      let html5QrcodeScanner = new Html5QrcodeScanner(
+        "reader",
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+        },
+        /* verbose= */ false
+      );
+      html5QrcodeScanner.render(onScanSuccess, onScanFailure);
       function onScanSuccess(decodedText, decodedResult) {
-        // Detener el escáner para evitar múltiples envíos
         html5QrcodeScanner.clear();
-
-        // Mostrar un mensaje de procesamiento
         const resultDiv = document.getElementById("result");
         resultDiv.textContent = "Procesando QR...";
         resultDiv.className = "status-message success";
         resultDiv.style.display = "block";
 
-        // Crear un FormData para enviar el dato
         const formData = new FormData();
         formData.append("qr_data", decodedText);
 
-        // Enviar el dato al servidor usando fetch
-        fetch("/process-qr", {
+        fetch("{{ url_for('main.process_qr') }}", {
           method: "POST",
           body: formData,
-          // Añadir el token CSRF si estás usando Flask-WTF con protección
-          headers: {
-            // 'X-CSRFToken': '{{ csrf_token() }}' // Descomentar si usas CSRF
-          },
         })
           .then((response) => response.json())
           .then((data) => {
             if (data.success) {
-              // Si el servidor responde con éxito, redirigir a la URL que nos indica
-              resultDiv.textContent =
-                "¡Éxito! Redirigiendo al proceso de revisión...";
+              resultDiv.textContent = "¡Éxito! Redirigiendo...";
               window.location.href = data.redirect_url;
             } else {
-              // Si hay un error, mostrarlo y reiniciar el escáner
               resultDiv.textContent = "Error: " + data.message;
               resultDiv.className = "status-message error";
-              // Opcional: reiniciar el escáner después de un error
               setTimeout(() => {
                 html5QrcodeScanner.render(onScanSuccess, onScanFailure);
                 resultDiv.style.display = "none";
@@ -107,7 +104,6 @@
             console.error("Error en la petición fetch:", error);
             resultDiv.textContent = "Error de conexión. Intente de nuevo.";
             resultDiv.className = "status-message error";
-            // Reiniciar el escáner
             setTimeout(() => {
               html5QrcodeScanner.render(onScanSuccess, onScanFailure);
               resultDiv.style.display = "none";
@@ -116,15 +112,8 @@
       }
 
       function onScanFailure(error) {
-        // Manejar errores de escaneo (no es un error crítico)
-        // console.warn(`Error de escaneo = ${error}`);
+        // No hacer nada en caso de fallo, para que el usuario pueda seguir intentando.
       }
-
-      let html5QrcodeScanner = new Html5QrcodeScanner("reader", {
-        fps: 10,
-        qrbox: 250,
-      });
-      html5QrcodeScanner.render(onScanSuccess, onScanFailure);
     </script>
   </body>
 </html>

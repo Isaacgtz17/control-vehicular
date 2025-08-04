@@ -13,13 +13,11 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 # Asegúrate que los modelos y extensiones se importen correctamente
-# Se usan los nombres de tus modelos: Vehiculo, RegistroAcceso, etc.
 from .models import (Vehiculo, RegistroAcceso, User, AuditLog, Operador, 
                      ChecklistSalida, EvidenciaFotografica) 
 from . import db, socketio
 from .utils import admin_required, log_action
 
-# Usamos el blueprint que ya tenías definido
 main_bp = Blueprint('main', __name__)
 
 # --- Rutas de Dashboards y Vistas Principales ---
@@ -27,21 +25,71 @@ main_bp = Blueprint('main', __name__)
 @main_bp.route('/')
 @login_required
 def index():
+    if current_user.role == 'admin':
+        # La lógica del admin se queda aquí
+        page_vehiculos = request.args.get('page_vehiculos', 1, type=int)
+        page_registros = request.args.get('page_registros', 1, type=int)
+        q_vehiculo = request.args.get('q_vehiculo', '')
+        q_bitacora = request.args.get('q_bitacora', '')
+
+        unidades_en_patio = Vehiculo.query.filter_by(status='adentro').count()
+        unidades_mantenimiento = Vehiculo.query.filter_by(status='mantenimiento').count()
+        total_unidades = Vehiculo.query.count()
+        unidades_en_ruta = total_unidades - unidades_en_patio - unidades_mantenimiento
+
+        if q_vehiculo:
+            vehiculos_pagination = Vehiculo.query.filter(
+                Vehiculo.placa.contains(q_vehiculo) |
+                Vehiculo.modelo.contains(q_vehiculo) |
+                Vehiculo.conductor.contains(q_vehiculo) |
+                Vehiculo.numero_economico.contains(q_vehiculo)
+            ).paginate(page=page_vehiculos, per_page=9)
+        else:
+            vehiculos_pagination = Vehiculo.query.paginate(page=page_vehiculos, per_page=9)
+
+        if q_bitacora:
+            registros_pagination = RegistroAcceso.query.join(Vehiculo).filter(
+                Vehiculo.placa.contains(q_bitacora) |
+                Vehiculo.modelo.contains(q_bitacora) |
+                Vehiculo.conductor.contains(q_bitacora) |
+                Vehiculo.numero_economico.contains(q_bitacora)
+            ).order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
+        else:
+            registros_pagination = RegistroAcceso.query.order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
+
+        template_data = {
+            'vehiculos': vehiculos_pagination,
+            'registros': registros_pagination,
+            'q_vehiculo': q_vehiculo,
+            'q_bitacora': q_bitacora,
+            'unidades_en_patio': unidades_en_patio,
+            'unidades_en_ruta': unidades_en_ruta,
+            'total_unidades': total_unidades,
+            'unidades_mantenimiento': unidades_mantenimiento
+        }
+        return render_template('index.html', **template_data)
+    
+    elif current_user.role == 'vigilante':
+        return redirect(url_for('main.dashboard_vigilante'))
+    
+    else:
+        flash("Rol de usuario no reconocido.", "warning")
+        return redirect(url_for('auth.login'))
+
+@main_bp.route('/dashboard/vigilante')
+@login_required
+def dashboard_vigilante():
+    if current_user.role != 'vigilante':
+        abort(403)
+    
     page_vehiculos = request.args.get('page_vehiculos', 1, type=int)
     page_registros = request.args.get('page_registros', 1, type=int)
     q_vehiculo = request.args.get('q_vehiculo', '')
     q_bitacora = request.args.get('q_bitacora', '')
 
-    unidades_en_patio = Vehiculo.query.filter_by(status='adentro').count()
-    unidades_mantenimiento = Vehiculo.query.filter_by(status='mantenimiento').count()
-    total_unidades = Vehiculo.query.count()
-    unidades_en_ruta = total_unidades - unidades_en_patio - unidades_mantenimiento
-
     if q_vehiculo:
         vehiculos_pagination = Vehiculo.query.filter(
             Vehiculo.placa.contains(q_vehiculo) |
-            Vehiculo.modelo.contains(q_vehiculo) |
-            Vehiculo.conductor.contains(q_vehiculo) |
             Vehiculo.numero_economico.contains(q_vehiculo)
         ).paginate(page=page_vehiculos, per_page=9)
     else:
@@ -50,43 +98,28 @@ def index():
     if q_bitacora:
         registros_pagination = RegistroAcceso.query.join(Vehiculo).filter(
             Vehiculo.placa.contains(q_bitacora) |
-            Vehiculo.modelo.contains(q_bitacora) |
-            Vehiculo.conductor.contains(q_bitacora) |
             Vehiculo.numero_economico.contains(q_bitacora)
         ).order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
     else:
         registros_pagination = RegistroAcceso.query.order_by(RegistroAcceso.timestamp.desc()).paginate(page=page_registros, per_page=10)
 
-    template_data = {
-        'vehiculos': vehiculos_pagination,
-        'registros': registros_pagination,
-        'q_vehiculo': q_vehiculo,
-        'q_bitacora': q_bitacora,
-        'unidades_en_patio': unidades_en_patio,
-        'unidades_en_ruta': unidades_en_ruta,
-        'total_unidades': total_unidades,
-        'unidades_mantenimiento': unidades_mantenimiento
-    }
+    return render_template('dashboard_vigilante.html', 
+                           registros=registros_pagination, 
+                           vehiculos=vehiculos_pagination,
+                           q_bitacora=q_bitacora,
+                           q_vehiculo=q_vehiculo)
 
-    if current_user.role == 'admin':
-        return render_template('index.html', **template_data)
-    else:
-        return render_template('dashboard_vigilante.html', registros=registros_pagination)
 
 # --- NUEVO FLUJO DE REVISIÓN CON FOTOS GUIADAS ---
 
 @main_bp.route('/escaner_movil')
 @login_required
 def escaner_movil():
-    """Muestra la página del escáner QR."""
     return render_template('escaner_movil.html')
 
 @main_bp.route('/process-qr', methods=['POST'])
 @login_required
 def process_qr():
-    """
-    Recibe el QR, determina si es salida o llegada y redirige al proceso de revisión.
-    """
     qr_id = request.form.get('qr_data')
     vehiculo = Vehiculo.query.filter_by(qr_id=qr_id).first()
 
@@ -96,39 +129,31 @@ def process_qr():
     if vehiculo.status == 'mantenimiento':
         return jsonify({'success': False, 'message': f'UNIDAD {vehiculo.numero_economico} EN MANTENIMIENTO'})
 
-    # Lógica de SALIDA (el vehículo está 'adentro')
     if vehiculo.status == 'adentro':
         nuevo_registro = RegistroAcceso(vehiculo_id=vehiculo.id, tipo='Salida')
         db.session.add(nuevo_registro)
         db.session.commit()
-        
         return jsonify({
             'success': True, 
             'redirect_url': url_for('main.check_process', registro_id=nuevo_registro.id, process_type='salida')
         })
-
-    # Lógica de LLEGADA (el vehículo está 'afuera')
     elif vehiculo.status == 'afuera':
         ultimo_registro_salida = RegistroAcceso.query.filter_by(vehiculo_id=vehiculo.id, tipo='Salida').order_by(RegistroAcceso.timestamp.desc()).first()
-        
         nuevo_registro_entrada = RegistroAcceso(vehiculo_id=vehiculo.id, tipo='Entrada')
         if ultimo_registro_salida:
             nuevo_registro_entrada.conductor_asignado = ultimo_registro_salida.conductor_asignado
         db.session.add(nuevo_registro_entrada)
         db.session.commit()
-
         return jsonify({
             'success': True,
             'redirect_url': url_for('main.check_process', registro_id=nuevo_registro_entrada.id, process_type='llegada')
         })
-    
     else:
         return jsonify({'success': False, 'message': f'El estado actual del vehículo ({vehiculo.status}) no permite esta operación.'})
 
 @main_bp.route('/check-process/<int:registro_id>/<string:process_type>')
 @login_required
 def check_process(registro_id, process_type):
-    """Muestra la página de checklist para tomar las fotos."""
     registro = RegistroAcceso.query.get_or_404(registro_id)
     vehiculo = registro.vehiculo
     return render_template('check_process.html', registro_id=registro.id, vehiculo=vehiculo, process_type=process_type)
@@ -136,7 +161,6 @@ def check_process(registro_id, process_type):
 @main_bp.route('/upload-check-photo', methods=['POST'])
 @login_required
 def upload_check_photo():
-    """Recibe y guarda una foto de evidencia para un registro específico."""
     if 'photo' not in request.files:
         return jsonify({'success': False, 'message': 'No se encontró el archivo de la foto.'})
 
@@ -148,12 +172,13 @@ def upload_check_photo():
         return jsonify({'success': False, 'message': 'Faltan datos para subir la foto.'})
 
     try:
-        filename = secure_filename(f"{registro_id}_{photo_type}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg")
+        # --- CORRECCIÓN APLICADA AQUÍ ---
+        # Se cambió datetime.now() por datetime.datetime.now()
+        filename = secure_filename(f"{registro_id}_{photo_type}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg")
         upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'])
         os.makedirs(upload_folder, exist_ok=True)
         file_path = os.path.join(upload_folder, filename)
         file.save(file_path)
-
         nueva_evidencia = EvidenciaFotografica(
             registro_acceso_id=registro_id, 
             tipo_foto=photo_type, 
@@ -161,7 +186,6 @@ def upload_check_photo():
         )
         db.session.add(nueva_evidencia)
         db.session.commit()
-
         return jsonify({'success': True, 'message': 'Foto guardada.', 'photo_url': filename})
     except Exception as e:
         db.session.rollback()
@@ -171,17 +195,14 @@ def upload_check_photo():
 @main_bp.route('/finish-check/<int:registro_id>')
 @login_required
 def finish_check(registro_id):
-    """Finaliza el proceso de revisión y actualiza el estado del vehículo."""
     registro = RegistroAcceso.query.get_or_404(registro_id)
     vehiculo = registro.vehiculo
     
     if registro.tipo == 'Salida':
         vehiculo.status = 'afuera'
-        action_log_msg = f'Completó revisión de SALIDA para vehículo {vehiculo.numero_economico}'
         log_action("Revisión Salida", f"Vehículo: {vehiculo.numero_economico}")
     elif registro.tipo == 'Entrada':
         vehiculo.status = 'adentro'
-        action_log_msg = f'Completó revisión de LLEGADA para vehículo {vehiculo.numero_economico}'
         log_action("Revisión Entrada", f"Vehículo: {vehiculo.numero_economico}")
     
     db.session.commit()
@@ -413,8 +434,8 @@ def export_csv():
     start_date_str = request.form.get('start_date')
     end_date_str = request.form.get('end_date')
     
-    start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-    end_date = datetime.strptime(f"{end_date_str} 23:59:59", '%Y-%m-%d %H:%M:%S')
+    start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d')
+    end_date = datetime.datetime.strptime(f"{end_date_str} 23:59:59", '%Y-%m-%d %H:%M:%S')
 
     registros = RegistroAcceso.query.filter(
         RegistroAcceso.timestamp >= start_date,
