@@ -12,6 +12,9 @@ from flask import (Blueprint, request, jsonify, render_template, redirect, url_f
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
+# --- NUEVA IMPORTACIÓN PARA MANEJAR IMÁGENES ---
+from PIL import Image, ImageDraw, ImageFont
+
 # Asegúrate que los modelos y extensiones se importen correctamente
 from .models import (Vehiculo, RegistroAcceso, User, AuditLog, Operador, 
                      ChecklistSalida, EvidenciaFotografica) 
@@ -172,8 +175,6 @@ def upload_check_photo():
         return jsonify({'success': False, 'message': 'Faltan datos para subir la foto.'})
 
     try:
-        # --- CORRECCIÓN APLICADA AQUÍ ---
-        # Se cambió datetime.now() por datetime.datetime.now()
         filename = secure_filename(f"{registro_id}_{photo_type}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg")
         upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'])
         os.makedirs(upload_folder, exist_ok=True)
@@ -346,18 +347,56 @@ def eliminar_vehiculo(vehiculo_id):
     flash(f'Vehículo {placa_eliminada} ha sido eliminado.', 'success')
     return redirect(url_for('main.index'))
 
+# --- RUTA MODIFICADA PARA AÑADIR TEXTO AL QR ---
 @main_bp.route('/vehiculo/descargar_qr/<int:vehiculo_id>')
 @login_required
 @admin_required
 def descargar_qr(vehiculo_id):
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
-    qr_img = qrcode.make(vehiculo.qr_id)
+    
+    # 1. Generar la imagen del QR en memoria
+    qr_img_raw = qrcode.make(vehiculo.qr_id, box_size=10, border=4)
+    
+    # --- CORRECCIÓN APLICADA AQUÍ ---
+    # Convertir la imagen del QR al modo 'RGB' para compatibilidad
+    qr_img = qr_img_raw.convert('RGB')
+    
+    # 2. Preparar para añadir texto
+    text = vehiculo.numero_economico
+    try:
+        # Intentar usar una fuente TrueType para mejor calidad y tamaño
+        font = ImageFont.truetype("arial.ttf", 30)
+    except IOError:
+        # Si no se encuentra Arial, usar una fuente por defecto (más pequeña)
+        font = ImageFont.load_default()
+
+    # 3. Crear un lienzo más grande para la imagen final
+    qr_width, qr_height = qr_img.size
+    text_bbox = font.getbbox(text)
+    text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
+    
+    padding = 15
+    new_height = qr_height + text_height + padding * 2
+    
+    final_img = Image.new('RGB', (qr_width, new_height), 'white')
+    
+    # 4. Pegar el QR en el lienzo
+    final_img.paste(qr_img, (0, 0))
+    
+    # 5. Dibujar el texto
+    draw = ImageDraw.Draw(final_img)
+    text_x = (qr_width - text_width) / 2
+    text_y = qr_height + padding
+    draw.text((text_x, text_y), text, font=font, fill="black")
+    
+    # 6. Guardar la imagen final en un buffer de memoria
     buffered = io.BytesIO()
-    qr_img.save(buffered, format="PNG")
+    final_img.save(buffered, format="PNG")
     buffered.seek(0)
+    
     return send_file(
         buffered, 
-        download_name=f"qr_{vehiculo.placa}.png", 
+        download_name=f"qr_{vehiculo.numero_economico}.png", 
         mimetype='image/png',
         as_attachment=True
     )
