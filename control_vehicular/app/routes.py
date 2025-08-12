@@ -347,30 +347,48 @@ def eliminar_vehiculo(vehiculo_id):
     flash(f'Vehículo {placa_eliminada} ha sido eliminado.', 'success')
     return redirect(url_for('main.index'))
 
-# --- RUTA MODIFICADA PARA AÑADIR TEXTO AL QR ---
+# --- RUTA MODIFICADA PARA AÑADIR LOGO Y TEXTO AL QR ---
 @main_bp.route('/vehiculo/descargar_qr/<int:vehiculo_id>')
 @login_required
 @admin_required
 def descargar_qr(vehiculo_id):
     vehiculo = Vehiculo.query.get_or_404(vehiculo_id)
     
-    # 1. Generar la imagen del QR en memoria
-    qr_img_raw = qrcode.make(vehiculo.qr_id, box_size=10, border=4)
-    
-    # --- CORRECCIÓN APLICADA AQUÍ ---
-    # Convertir la imagen del QR al modo 'RGB' para compatibilidad
-    qr_img = qr_img_raw.convert('RGB')
-    
-    # 2. Preparar para añadir texto
+    # --- 1. Cargar el logo ---
+    try:
+        logo_path = os.path.join(current_app.root_path, 'static', 'images', 'logo.png')
+        logo = Image.open(logo_path)
+    except FileNotFoundError:
+        flash("No se encontró el archivo 'logo.png' en 'app/static/images/'. Se generará el QR sin logo.", "warning")
+        logo = None
+
+    # --- 2. Generar QR con alta corrección de errores ---
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(vehiculo.qr_id)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
+
+    # --- 3. Superponer el logo en el QR ---
+    if logo:
+        logo = logo.convert("RGBA")  # Asegura canal alfa para transparencia
+        logo_size_ratio = 0.25  # El logo ocupará el 25% del tamaño del QR
+        qr_width, qr_height = qr_img.size
+        logo_max_size = int(qr_width * logo_size_ratio)
+        logo.thumbnail((logo_max_size, logo_max_size))
+        logo_pos = ((qr_width - logo.size[0]) // 2, (qr_height - logo.size[1]) // 2)
+        qr_img.paste(logo, logo_pos, logo)
+
+    # --- 4. Preparar lienzo final con texto ---
     text = vehiculo.numero_economico
     try:
-        # Intentar usar una fuente TrueType para mejor calidad y tamaño
         font = ImageFont.truetype("arial.ttf", 30)
     except IOError:
-        # Si no se encuentra Arial, usar una fuente por defecto (más pequeña)
         font = ImageFont.load_default()
 
-    # 3. Crear un lienzo más grande para la imagen final
     qr_width, qr_height = qr_img.size
     text_bbox = font.getbbox(text)
     text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
@@ -379,17 +397,14 @@ def descargar_qr(vehiculo_id):
     new_height = qr_height + text_height + padding * 2
     
     final_img = Image.new('RGB', (qr_width, new_height), 'white')
-    
-    # 4. Pegar el QR en el lienzo
     final_img.paste(qr_img, (0, 0))
     
-    # 5. Dibujar el texto
     draw = ImageDraw.Draw(final_img)
     text_x = (qr_width - text_width) / 2
     text_y = qr_height + padding
     draw.text((text_x, text_y), text, font=font, fill="black")
     
-    # 6. Guardar la imagen final en un buffer de memoria
+    # --- 5. Guardar y enviar la imagen final ---
     buffered = io.BytesIO()
     final_img.save(buffered, format="PNG")
     buffered.seek(0)
